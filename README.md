@@ -64,7 +64,7 @@ PyDeployer is a lightweight, modular deployment automation tool designed specifi
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone git@github.com:unomena/deployment-tool.git
 cd deployment-tool
 ```
 

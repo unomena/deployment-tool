@@ -129,8 +129,8 @@ deploy script → deploy.py → individual scripts
 
 ### Setting Up Development Environment
 ```bash
-# Clone repository
-git clone <repo-url>
+# Clone repository  
+git clone git@github.com:unomena/deployment-tool.git
 cd deployment-tool
 
 # Set up development environment

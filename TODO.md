@@ -11,7 +11,7 @@
 
 ### Phase 1: Initial Setup and Testing
 - [ ] **Deploy to Ubuntu Server**
-  - Clone this repository to Ubuntu server
+  - Clone this repository to Ubuntu server: `git clone git@github.com:unomena/deployment-tool.git`
   - Set up deployment tool's own virtual environment: `make build`
   - Test basic functionality with `./deploy --help`
 
