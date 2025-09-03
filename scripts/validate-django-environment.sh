@@ -11,14 +11,20 @@
 #   DB_USER              - Database user
 #
 # Optional Environment Variables:
-#   PYTHON_PATH          - Path to Python executable (default: python)
+#   PROJECT_PYTHON_PATH  - Path to PROJECT Python executable (required for Django operations)
 #   DJANGO_PROJECT_DIR   - Django project directory (default: current directory)
 
 set -e  # Exit on any error
 
-# Default values
-PYTHON_PATH="${PYTHON_PATH:-python}"
+# Default values - PROJECT_PYTHON_PATH is required and set by deployment orchestrator
 DJANGO_PROJECT_DIR="${DJANGO_PROJECT_DIR:-.}"
+
+# Validate PROJECT_PYTHON_PATH is provided
+if [[ -z "${PROJECT_PYTHON_PATH}" ]]; then
+    echo -e "\033[0;31m[ERROR]\033[0m PROJECT_PYTHON_PATH is required but not set"
+    echo -e "\033[0;31m[ERROR]\033[0m This should be set by the deployment orchestrator"
+    exit 1
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -62,23 +68,23 @@ check_required_vars() {
     if [[ ${#missing_vars[@]} -gt 0 ]]; then
         log_error "Missing required environment variables: ${missing_vars[*]}"
         log_error "Required variables: DJANGO_SETTINGS_MODULE, SECRET_KEY, DB_NAME, DB_USER"
-        log_error "Optional variables: PYTHON_PATH (default: python), DJANGO_PROJECT_DIR (default: .)"
+        log_error "PROJECT_PYTHON_PATH should be set by deployment orchestrator"
         exit 1
     fi
 }
 
 # Check Python executable
 check_python() {
-    log_info "Checking Python executable: ${PYTHON_PATH}"
+    log_info "Checking PROJECT Python executable: ${PROJECT_PYTHON_PATH}"
     
-    if ! command -v "${PYTHON_PATH}" >/dev/null 2>&1; then
-        log_error "Python executable not found: ${PYTHON_PATH}"
+    if ! command -v "${PROJECT_PYTHON_PATH}" >/dev/null 2>&1; then
+        log_error "PROJECT Python executable not found: ${PROJECT_PYTHON_PATH}"
         exit 1
     fi
     
     local python_version
-    python_version=$(${PYTHON_PATH} --version 2>&1)
-    log_info "Using ${python_version}"
+    python_version=$(${PROJECT_PYTHON_PATH} --version 2>&1)
+    log_info "Using PROJECT Python: ${python_version}"
 }
 
 # Validate Django environment variables
@@ -106,7 +112,7 @@ print(f"Database User: {os.environ.get(\"DB_USER\")}")
 print(f"Debug Mode: {os.environ.get(\"DEBUG\", \"Not set\")}")
 '
     
-    if ! ${PYTHON_PATH} -c "${validation_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${validation_script}"; then
         log_error "Environment variables validation failed"
         exit 1
     fi
@@ -152,7 +158,7 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    if ! ${PYTHON_PATH} -c "${django_test_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${django_test_script}"; then
         log_error "Django setup test failed"
         exit 1
     fi
@@ -197,7 +203,7 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    if ! ${PYTHON_PATH} -c "${db_test_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${db_test_script}"; then
         log_error "Database connection test failed"
         exit 1
     fi
@@ -216,7 +222,7 @@ test_django_management() {
         log_info "Found manage.py"
         
         # Test help command (should not fail)
-        if ${PYTHON_PATH} manage.py help >/dev/null 2>&1; then
+        if ! ${PROJECT_PYTHON_PATH} manage.py check --deploy 2>/dev/null; then
             log_info "✓ Django management commands accessible"
         else
             log_warn "Django management commands may have issues"

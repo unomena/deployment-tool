@@ -10,15 +10,21 @@
 #   DEFAULT_SUPERUSER_PASSWORD - Superuser password
 #
 # Optional Environment Variables:
-#   PYTHON_PATH          - Path to Python executable (default: python)
+#   PROJECT_PYTHON_PATH  - Path to PROJECT Python executable (required for Django operations)
 #   DJANGO_PROJECT_DIR   - Django project directory (default: current directory)
 #   DJANGO_SETTINGS_MODULE - Django settings module (should be set)
 
 set -e  # Exit on any error
 
-# Default values
-PYTHON_PATH="${PYTHON_PATH:-python}"
+# Default values - PROJECT_PYTHON_PATH is required and set by deployment orchestrator
 DJANGO_PROJECT_DIR="${DJANGO_PROJECT_DIR:-.}"
+
+# Validate PROJECT_PYTHON_PATH is provided
+if [[ -z "${PROJECT_PYTHON_PATH}" ]]; then
+    echo -e "\033[0;31m[ERROR]\033[0m PROJECT_PYTHON_PATH is required but not set"
+    echo -e "\033[0;31m[ERROR]\033[0m This should be set by the deployment orchestrator"
+    exit 1
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -58,7 +64,7 @@ check_required_vars() {
     if [[ ${#missing_vars[@]} -gt 0 ]]; then
         log_error "Missing required environment variables: ${missing_vars[*]}"
         log_error "Required variables: DEFAULT_SUPERUSER_USERNAME, DEFAULT_SUPERUSER_EMAIL, DEFAULT_SUPERUSER_PASSWORD"
-        log_error "Optional variables: PYTHON_PATH (default: python), DJANGO_PROJECT_DIR (default: .)"
+        log_error "PROJECT_PYTHON_PATH should be set by deployment orchestrator"
         exit 1
     fi
 }
@@ -76,16 +82,16 @@ validate_email() {
 
 # Check Python and Django availability
 check_django_availability() {
-    log_info "Checking Python and Django availability..."
+    log_info "Checking PROJECT Python and Django availability..."
     
-    if ! command -v "${PYTHON_PATH}" >/dev/null 2>&1; then
-        log_error "Python executable not found: ${PYTHON_PATH}"
+    if ! command -v "${PROJECT_PYTHON_PATH}" >/dev/null 2>&1; then
+        log_error "PROJECT Python executable not found: ${PROJECT_PYTHON_PATH}"
         exit 1
     fi
     
     local python_version
-    python_version=$(${PYTHON_PATH} --version 2>&1)
-    log_info "Using ${python_version}"
+    python_version=$(${PROJECT_PYTHON_PATH} --version 2>&1)
+    log_info "Using PROJECT Python: ${python_version}"
     
     # Check Django availability
     local django_check_script='
@@ -100,7 +106,7 @@ except ImportError:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    if ! ${PYTHON_PATH} -c "${django_check_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${django_check_script}"; then
         log_error "Django is not available"
         exit 1
     fi
@@ -135,7 +141,7 @@ except Exception as e:
     cd "${DJANGO_PROJECT_DIR}"
     
     local result
-    result=$(${PYTHON_PATH} -c "${user_check_script}")
+    result=$(${PROJECT_PYTHON_PATH} -c "${user_check_script}")
     
     case "$result" in
         "EXISTS")
@@ -189,7 +195,7 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    if ! ${PYTHON_PATH} -c "${superuser_creation_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${superuser_creation_script}"; then
         log_error "Failed to create superuser"
         exit 1
     fi
@@ -242,7 +248,7 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    if ! ${PYTHON_PATH} -c "${verification_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${verification_script}"; then
         log_error "Superuser verification failed"
         exit 1
     fi
@@ -285,7 +291,7 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    if ! ${PYTHON_PATH} -c "${auth_test_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${auth_test_script}"; then
         log_error "Superuser authentication test failed"
         exit 1
     fi
@@ -335,7 +341,7 @@ REQUIRED ENVIRONMENT VARIABLES:
     DEFAULT_SUPERUSER_PASSWORD  Superuser password
 
 OPTIONAL ENVIRONMENT VARIABLES:
-    PYTHON_PATH           Path to Python executable (default: python)
+    PROJECT_PYTHON_PATH   Path to PROJECT Python executable (set by deployment orchestrator)
     DJANGO_PROJECT_DIR    Django project directory (default: current directory)
     DJANGO_SETTINGS_MODULE Django settings module (should be set)
 

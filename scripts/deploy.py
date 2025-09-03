@@ -115,6 +115,12 @@ class PyDeployer:
         env_vars['CONFIG_SOURCE_DIR'] = str(self.config_path / "supervisor")
         env_vars['CONFIG_DATA'] = json.dumps(self.config)
         
+        # Add PROJECT-specific Python paths (for Django operations)
+        # These must use the project's virtual environment, not the deployment tool's
+        env_vars['PROJECT_PYTHON_PATH'] = str(self.venv_path / "bin" / "python")
+        env_vars['PROJECT_PIP_PATH'] = str(self.venv_path / "bin" / "pip")
+        env_vars['DJANGO_PROJECT_DIR'] = str(self.code_path)
+        
         return env_vars
 
     def _run_script(self, script_name: str, description: str) -> bool:
