@@ -121,12 +121,12 @@ clone_and_checkout() {
     local branch_or_sha="$2"
     local temp_dir="/tmp/deployment-$(date +%s)-$$"
     
-    log_step "Cloning repository and checking out $branch_or_sha"
+    log_step "Cloning repository and checking out $branch_or_sha" >&2
     
     # Clone repository
-    log_info "Cloning repository to $temp_dir"
-    if ! git clone "$repo_url" "$temp_dir"; then
-        log_error "Failed to clone repository: $repo_url"
+    log_info "Cloning repository to $temp_dir" >&2
+    if ! git clone "$repo_url" "$temp_dir" >&2; then
+        log_error "Failed to clone repository: $repo_url" >&2
         exit 1
     fi
     
@@ -134,34 +134,34 @@ clone_and_checkout() {
     cd "$temp_dir"
     
     # Fetch all branches and tags
-    log_info "Fetching all branches and tags"
-    git fetch --all --tags
+    log_info "Fetching all branches and tags" >&2
+    git fetch --all --tags >&2
     
     # Try to checkout as branch first, then as commit SHA
-    log_info "Checking out $branch_or_sha"
-    if git checkout "$branch_or_sha" 2>/dev/null; then
-        log_info "Successfully checked out branch: $branch_or_sha"
-    elif git checkout -b "deploy-$branch_or_sha" "$branch_or_sha" 2>/dev/null; then
-        log_info "Successfully checked out commit SHA: $branch_or_sha"
-    elif git checkout "origin/$branch_or_sha" -b "$branch_or_sha" 2>/dev/null; then
-        log_info "Successfully checked out remote branch: origin/$branch_or_sha"
+    log_info "Checking out $branch_or_sha" >&2
+    if git checkout "$branch_or_sha" >&2 2>/dev/null; then
+        log_info "Successfully checked out branch: $branch_or_sha" >&2
+    elif git checkout -b "deploy-$branch_or_sha" "$branch_or_sha" >&2 2>/dev/null; then
+        log_info "Successfully checked out commit SHA: $branch_or_sha" >&2
+    elif git checkout "origin/$branch_or_sha" -b "$branch_or_sha" >&2 2>/dev/null; then
+        log_info "Successfully checked out remote branch: origin/$branch_or_sha" >&2
     else
-        log_error "Failed to checkout '$branch_or_sha'. Branch or commit not found."
+        log_error "Failed to checkout '$branch_or_sha'. Branch or commit not found." >&2
         cleanup_temp_dir "$temp_dir"
         exit 1
     fi
     
     # Verify we have the expected config file
     if [[ ! -f "$CONFIG_FILE" ]]; then
-        log_error "Configuration file '$CONFIG_FILE' not found in repository"
-        log_error "Available config files:"
-        ls -la deploy-*.yml 2>/dev/null || log_error "No deployment configuration files found"
+        log_error "Configuration file '$CONFIG_FILE' not found in repository" >&2
+        log_error "Available config files:" >&2
+        ls -la deploy-*.yml >&2 2>/dev/null || log_error "No deployment configuration files found" >&2
         cleanup_temp_dir "$temp_dir"
         exit 1
     fi
     
-    log_info "✓ Repository prepared at $temp_dir"
-    echo "$temp_dir"  # Return temp directory path
+    log_info "✓ Repository prepared at $temp_dir" >&2
+    echo "$temp_dir"  # Return temp directory path to stdout
 }
 
 # Clean up temporary directory
