@@ -256,30 +256,41 @@ class PyDeployer:
         logger.info(f"Starting deployment of {self.project_name}")
         
         # Deployment steps with error checking
-        deployment_steps = [
+        # Steps before starting services
+        pre_service_steps = [
             (self.create_directory_structure, "Directory structure creation"),
             (self.install_system_dependencies, "System dependencies installation"),
             (self.setup_python_environment, "Python environment setup"),
             (self.copy_repository, "Repository copying to deployment directory"),
             (self.install_python_dependencies, "Python dependencies installation"),
+        ]
+        
+        # Steps for starting services
+        service_steps = [
             (self.generate_supervisor_configs, "Supervisor config generation"),
             (self.install_supervisor_configs, "Supervisor config installation"),
         ]
         
         try:
-            # Execute deployment steps
-            for step_func, step_name in deployment_steps:
+            # Execute pre-service deployment steps
+            for step_func, step_name in pre_service_steps:
                 if not step_func():
                     logger.error(f"Deployment failed at step: {step_name}")
                     return False
             
-            # Execute pre-deploy hooks
-            if not self.run_hooks('pre-deploy'):
+            # Execute pre-deploy hooks (database setup, etc.)
+            if not self.run_hooks('pre_deploy'):
                 logger.error("Pre-deploy hooks failed")
                 return False
             
-            # Execute post-deploy hooks
-            if not self.run_hooks('post-deploy'):
+            # Now start the services
+            for step_func, step_name in service_steps:
+                if not step_func():
+                    logger.error(f"Deployment failed at step: {step_name}")
+                    return False
+            
+            # Execute post-deploy hooks (migrations, static files, etc.)
+            if not self.run_hooks('post_deploy'):
                 logger.error("Post-deploy hooks failed")
                 return False
             
@@ -307,9 +318,15 @@ class PyDeployer:
         
         try:
             for i, hook in enumerate(hooks):
-                if hook.get('type') == 'command':
+                description = hook.get('description', f'Hook {i+1}')
+                allow_failure = hook.get('allow_failure', False)
+                
+                logger.info(f"Running: {description}")
+                
+                if 'command' in hook:
+                    # Direct command execution
                     cmd = hook['command']
-                    logger.info(f"Running hook command: {cmd}")
+                    logger.info(f"Executing command: {cmd}")
                     
                     # Setup environment for hook
                     env = os.environ.copy()
@@ -325,18 +342,28 @@ class PyDeployer:
                         logger.error(f"Hook command failed: {cmd}")
                         if result.stderr:
                             logger.error(f"Error output: {result.stderr}")
-                        return False
+                        if not allow_failure:
+                            return False
+                        logger.warning(f"Continuing despite failure (allow_failure=true)")
+                    else:
+                        logger.info(f"✓ {description} completed successfully")
                     
                     if result.stdout:
-                        logger.info(f"Hook output: {result.stdout}")
+                        logger.debug(f"Hook output: {result.stdout}")
                 
-                elif hook.get('type') == 'script':
+                elif 'script' in hook:
+                    # Script execution from scripts directory
                     script_name = hook['script']
-                    logger.info(f"Running hook script: {script_name}")
+                    logger.info(f"Executing script: {script_name}")
                     
-                    if not self._run_script(script_name, f"Hook script {script_name}"):
+                    success = self._run_script(script_name, description)
+                    if not success:
                         logger.error(f"Hook script failed: {script_name}")
-                        return False
+                        if not allow_failure:
+                            return False
+                        logger.warning(f"Continuing despite failure (allow_failure=true)")
+                    else:
+                        logger.info(f"✓ {description} completed successfully")
             
             logger.info(f"✓ All {hook_type} hooks completed successfully")
             return True
