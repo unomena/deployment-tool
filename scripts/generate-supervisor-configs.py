@@ -109,9 +109,6 @@ class SupervisorConfigGenerator:
             # Absolute command path
             full_command = command
         
-        # Determine number of processes
-        numprocs = service.get('workers', 1)
-        
         # Determine working directory
         working_dir = self.code_path
         if 'working_directory' in service:
@@ -124,6 +121,19 @@ class SupervisorConfigGenerator:
             environment_string = self._build_environment_string(
                 self.config_data['env_vars']
             )
+        
+        # Handle gunicorn services specially
+        if service.get('type') == 'gunicorn':
+            # For gunicorn, use its own worker management instead of supervisor's
+            workers = service.get('workers', 1)
+            port = service.get('port', 8000)
+            # Modify command to include workers and bind parameters
+            if '--workers' not in command and '--bind' not in command:
+                full_command = f"{self.venv_path}/bin/{command} --workers {workers} --bind 127.0.0.1:{port}"
+            supervisor_numprocs = 1  # Only one supervisor process for gunicorn
+        else:
+            # For non-gunicorn services, use supervisor's process management
+            supervisor_numprocs = service.get('workers', 1)
         
         # Generate configuration
         config_content = f"""[program:{self.project_name}-{service_name}]
@@ -141,10 +151,10 @@ stderr_logfile_maxbytes=50MB
 stdout_logfile_backups=5
 stderr_logfile_backups=5
 environment={environment_string}
-numprocs={numprocs}"""
+numprocs={supervisor_numprocs}"""
         
-        # Add process naming for multiple processes
-        if numprocs > 1:
+        # Add process naming for multiple supervisor processes (non-gunicorn)
+        if supervisor_numprocs > 1:
             config_content += f"\nprocess_name=%(program_name)s_%(process_num)02d"
         
         # Add service-specific configurations
