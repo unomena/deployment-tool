@@ -48,7 +48,7 @@ class PyDeployer:
         self.config_path = self.base_path / "config"
         self.logs_path = self.base_path / "logs"
         self.venv_path = self.base_path / "venv"
-        self.scripts_path = Path(__file__).parent / "scripts"
+        self.scripts_path = Path(__file__).parent
         
         logger.info(f"Deploying {self.project_name} to {self.environment} environment")
         logger.info(f"Base path: {self.base_path}")

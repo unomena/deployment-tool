@@ -89,7 +89,10 @@ class SupervisorConfigGenerator:
         for key, value in env_vars.items():
             # Handle variable substitution
             resolved_value = self._substitute_environment_variables(value, env_vars)
-            env_pairs.append(f"{key}={resolved_value}")
+            # Quote the value to handle special characters
+            # Escape any existing quotes in the value
+            escaped_value = str(resolved_value).replace('"', '\\"')
+            env_pairs.append(f'{key}="{escaped_value}"')
         
         return ','.join(env_pairs)
 
@@ -109,17 +112,23 @@ class SupervisorConfigGenerator:
         # Determine number of processes
         numprocs = service.get('workers', 1)
         
+        # Determine working directory
+        working_dir = self.code_path
+        if 'working_directory' in service:
+            # If service specifies a working directory, append it to code_path
+            working_dir = self.code_path / service['working_directory']
+        
         # Build environment variables
         environment_string = ""
-        if 'environment' in self.config_data:
+        if 'env_vars' in self.config_data:
             environment_string = self._build_environment_string(
-                self.config_data['environment']
+                self.config_data['env_vars']
             )
         
         # Generate configuration
         config_content = f"""[program:{self.project_name}-{service_name}]
 command={full_command}
-directory={self.code_path}
+directory={working_dir}
 user={self.user}
 autostart={'true' if self.autostart else 'false'}
 autorestart={'true' if self.autorestart else 'false'}
