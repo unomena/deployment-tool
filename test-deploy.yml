@@ -1,0 +1,51 @@
+name: test-app
+environment: dev
+repo: https://github.com/django/django.git  # Using public repo for testing
+python_version: "3.12"
+
+dependencies:
+  system: []  # No system dependencies for local testing
+  python:
+    - django
+    - requests
+  python-requirements: []
+
+env_vars:
+  DJANGO_SETTINGS_MODULE: django.conf.global_settings
+  PYTHONUNBUFFERED: "1"
+  DEBUG: "1"
+  SECRET_KEY: "test-secret-key"
+  DB_HOST: "localhost"
+  DB_NAME: "test-db"
+  DB_USER: "test-user"
+  DB_PASSWORD: "test-password"
+  DB_PORT: "5432"
+
+database:
+  type: postgresql
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+
+services:
+  - name: web
+    command: python manage.py runserver 0.0.0.0:8000
+    workers: 1
+    
+hooks:
+  pre-deploy:
+    - type: command
+      command: echo "Pre-deploy hook executed"
+  post-deploy:
+    - type: command
+      command: echo "Post-deploy hook executed"
+
+health_check:
+  url: "http://localhost:8000/"
+  timeout: 30
+  
+rollback:
+  enabled: true
+  keep_releases: 3

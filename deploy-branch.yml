@@ -1,0 +1,102 @@
+name: sample-app
+environment: dev
+repo: git@github.com:sample-app.git
+python_version: "3.12"
+
+dependencies:
+  system:
+    - postgresql-client
+    - libpq-dev
+    - python3-dev
+    - build-essential
+  python:
+    - postgresql
+    - redis
+    - celery
+    - gunicorn
+  python-requirements:
+    - requirements.txt
+
+env_vars:
+  DJANGO_SETTINGS_MODULE: project.settings_dev
+  PYTHONUNBUFFERED: "1"
+  DEBUG: "0"
+  ALLOWED_HOSTS: "*"
+  SECRET_KEY: "sample-app-branch-secret-key-change-in-production-2025"
+  DB_HOST: "localhost"
+  DB_NAME: "sample-app-branch-db"
+  DB_USER: "sample-app-branch-db-user"
+  DB_PASSWORD: "sample-app-branch-db-password"
+  DB_PORT: "5432"
+  REDIS_URL: "redis://localhost:6379/3"
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  AWS_STORAGE_BUCKET_NAME: ""
+  AWS_S3_REGION_NAME: "us-east-1"
+  DEFAULT_SUPERUSER_USERNAME: "admin"
+  DEFAULT_SUPERUSER_PASSWORD: "admin"
+  DEFAULT_SUPERUSER_EMAIL: "admin@example.com"
+
+database:
+  type: postgresql
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+
+services:
+  - name: web
+    type: gunicorn
+    command: "gunicorn project.wsgi:application"
+    workers: 3
+    port: 8010
+
+  - name: worker
+    type: celery
+    command: "celery -A project worker -l info"
+    workers: 4
+
+  - name: beat
+    type: celery
+    command: "celery -A project beat -l info"
+
+hooks:
+  pre_deploy:
+    # Basic checks before deployment - nothing that requires Django to be fully configured
+    - script: "verify-postgresql-database.sh"
+      description: "Verifying PostgreSQL database and creating if not exists"
+      allow_failure: true
+
+  post_deploy:
+    # These run AFTER the server is up and running
+    
+    # Validate Django environment setup
+    - script: "validate-django-environment.sh"
+      description: "Validating Django environment and database connection"
+      allow_failure: false
+    
+    # First, run migrations now that server is running
+    - command: "venv/bin/python manage.py migrate --noinput"
+      description: "Running database migrations (server is now running)"
+      allow_failure: true
+      retry_on_failure: true
+    
+    # Create superuser if needed
+    - script: "create-django-superuser.sh"
+      description: "Creating admin user if not exists"
+      allow_failure: true
+    
+    # Finally, collect static files as the very last step
+    - command: "venv/bin/python manage.py collectstatic --noinput --clear"
+      description: "Collecting Django admin static files (final step)"
+      allow_failure: true
+
+health_check:
+  path: "/admin/login/"
+  timeout: 30
+  retries: 5
+
+rollback:
+  keep_releases: 3
+  on_failure: false
