@@ -188,13 +188,36 @@ class PyDeployer:
         """Setup Python virtual environment using script"""
         return self._run_script("setup-python-environment.sh", "Setting up Python environment")
 
-    def clone_repository(self) -> bool:
-        """Clone repository using script"""
-        if 'repo' not in self.config:
-            logger.info("No repository specified, skipping clone")
-            return True
+    def copy_repository(self) -> bool:
+        """Copy repository from current directory to deployment code directory"""
+        import shutil
+        import os
         
-        return self._run_script("clone-repository.sh", "Cloning repository")
+        logger.info("Copying repository to deployment directory...")
+        
+        # Current directory should contain the cloned repository
+        current_dir = Path.cwd()
+        
+        # Verify we're in a git repository
+        if not (current_dir / ".git").exists():
+            logger.error("Current directory is not a git repository")
+            logger.error("The deploy shell script should run this from the cloned repo")
+            return False
+        
+        # Remove existing code directory if it exists
+        if self.code_path.exists():
+            logger.info(f"Removing existing code directory: {self.code_path}")
+            shutil.rmtree(self.code_path)
+        
+        # Copy repository contents to code directory
+        try:
+            logger.info(f"Copying repository from {current_dir} to {self.code_path}")
+            shutil.copytree(current_dir, self.code_path, ignore=shutil.ignore_patterns('.git'))
+            logger.info(f"✓ Repository copied to: {self.code_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to copy repository: {e}")
+            return False
 
     def install_python_dependencies(self) -> bool:
         """Install Python dependencies using script"""
@@ -231,7 +254,7 @@ class PyDeployer:
             (self.create_directory_structure, "Directory structure creation"),
             (self.install_system_dependencies, "System dependencies installation"),
             (self.setup_python_environment, "Python environment setup"),
-            (self.clone_repository, "Repository cloning"),
+            (self.copy_repository, "Repository copying to deployment directory"),
             (self.install_python_dependencies, "Python dependencies installation"),
             (self.generate_supervisor_configs, "Supervisor config generation"),
             (self.install_supervisor_configs, "Supervisor config installation"),

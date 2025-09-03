@@ -1,0 +1,224 @@
+#!/bin/bash
+# deploy - Simplified Django Deployment Script
+# 
+# Usage: ./deploy <repository_url> <branch_or_sha> <environment>
+#
+# Parameters:
+#   repository_url  - Git repository URL (https:// or git@)
+#   branch_or_sha   - Branch name or commit SHA to deploy
+#   environment     - Deployment environment (prod, stage, qa, dev, branch)
+#
+# Examples:
+#   ./deploy https://github.com/myorg/myapp.git main prod
+#   ./deploy git@github.com:myorg/myapp.git feature/new-ui dev
+#   ./deploy https://github.com/myorg/myapp.git v1.2.3 stage
+
+set -e  # Exit on any error
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging functions
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
+}
+
+# Show usage information
+show_usage() {
+    cat << EOF
+Usage: ./deploy <repository_url> <branch_or_sha> <environment>
+
+PARAMETERS:
+    repository_url    Git repository URL (https:// or git@)
+    branch_or_sha     Branch name or commit SHA to deploy
+    environment       Deployment environment (prod, stage, qa, dev, branch)
+
+ENVIRONMENTS:
+    prod     - Production deployment (uses deploy-prod.yml)
+    stage    - Staging deployment (uses deploy-stage.yml)
+    qa       - QA deployment (uses deploy-qa.yml)
+    dev      - Development deployment (uses deploy-dev.yml)
+    branch   - Branch deployment (uses deploy-branch.yml)
+
+EXAMPLES:
+    # Deploy main branch to production
+    ./deploy https://github.com/myorg/myapp.git main prod
+    
+    # Deploy feature branch to development
+    ./deploy git@github.com:myorg/myapp.git feature/new-ui dev
+    
+    # Deploy specific version to staging
+    ./deploy https://github.com/myorg/myapp.git v1.2.3 stage
+    
+    # Deploy branch for testing
+    ./deploy git@github.com:myorg/myapp.git experimental-feature branch
+
+REQUIREMENTS:
+    - Ubuntu LTS server with Python 3.8+
+    - Git installed and configured
+    - SSH keys configured for git@ URLs
+    - sudo privileges for system operations
+EOF
+}
+
+# Validate parameters
+validate_parameters() {
+    if [[ $# -lt 3 ]]; then
+        log_error "Missing required parameters"
+        show_usage
+        exit 1
+    fi
+    
+    REPO_URL="$1"
+    BRANCH_OR_SHA="$2"
+    ENVIRONMENT="$3"
+    
+    # Validate repository URL format
+    if [[ ! "$REPO_URL" =~ ^(https://|git@) ]]; then
+        log_error "Invalid repository URL format. Must start with 'https://' or 'git@'"
+        exit 1
+    fi
+    
+    # Validate environment
+    case "$ENVIRONMENT" in
+        prod|stage|qa|dev|branch)
+            log_info "Environment: $ENVIRONMENT"
+            ;;
+        *)
+            log_error "Invalid environment '$ENVIRONMENT'. Must be one of: prod, stage, qa, dev, branch"
+            exit 1
+            ;;
+    esac
+    
+    # Set config file based on environment
+    CONFIG_FILE="deploy-${ENVIRONMENT}.yml"
+    
+    log_info "Repository: $REPO_URL"
+    log_info "Branch/SHA: $BRANCH_OR_SHA"
+    log_info "Environment: $ENVIRONMENT"
+    log_info "Config file: $CONFIG_FILE"
+}
+
+# Clone repository and checkout specified branch/SHA
+clone_and_checkout() {
+    local repo_url="$1"
+    local branch_or_sha="$2"
+    local temp_dir="/tmp/deployment-$(date +%s)-$$"
+    
+    log_step "Cloning repository and checking out $branch_or_sha"
+    
+    # Clone repository
+    log_info "Cloning repository to $temp_dir"
+    if ! git clone "$repo_url" "$temp_dir"; then
+        log_error "Failed to clone repository: $repo_url"
+        exit 1
+    fi
+    
+    # Change to repository directory
+    cd "$temp_dir"
+    
+    # Fetch all branches and tags
+    log_info "Fetching all branches and tags"
+    git fetch --all --tags
+    
+    # Try to checkout as branch first, then as commit SHA
+    log_info "Checking out $branch_or_sha"
+    if git checkout "$branch_or_sha" 2>/dev/null; then
+        log_info "Successfully checked out branch: $branch_or_sha"
+    elif git checkout -b "deploy-$branch_or_sha" "$branch_or_sha" 2>/dev/null; then
+        log_info "Successfully checked out commit SHA: $branch_or_sha"
+    elif git checkout "origin/$branch_or_sha" -b "$branch_or_sha" 2>/dev/null; then
+        log_info "Successfully checked out remote branch: origin/$branch_or_sha"
+    else
+        log_error "Failed to checkout '$branch_or_sha'. Branch or commit not found."
+        cleanup_temp_dir "$temp_dir"
+        exit 1
+    fi
+    
+    # Verify we have the expected config file
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        log_error "Configuration file '$CONFIG_FILE' not found in repository"
+        log_error "Available config files:"
+        ls -la deploy-*.yml 2>/dev/null || log_error "No deployment configuration files found"
+        cleanup_temp_dir "$temp_dir"
+        exit 1
+    fi
+    
+    log_info "✓ Repository prepared at $temp_dir"
+    echo "$temp_dir"  # Return temp directory path
+}
+
+# Clean up temporary directory
+cleanup_temp_dir() {
+    local temp_dir="$1"
+    if [[ -n "$temp_dir" && -d "$temp_dir" ]]; then
+        log_info "Cleaning up temporary directory: $temp_dir"
+        rm -rf "$temp_dir"
+    fi
+}
+
+# Main execution function
+main() {
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local deployer_script="$script_dir/scripts/deploy.py"
+    
+    log_step "Starting Django deployment automation"
+    
+    # Validate input parameters
+    validate_parameters "$@"
+    
+    # Verify deployer script exists
+    if [[ ! -f "$deployer_script" ]]; then
+        log_error "Deployer script not found: $deployer_script"
+        exit 1
+    fi
+    
+    # Clone repository and checkout branch/SHA
+    local temp_repo_dir
+    temp_repo_dir=$(clone_and_checkout "$REPO_URL" "$BRANCH_OR_SHA")
+    
+    # Ensure cleanup happens on exit
+    trap "cleanup_temp_dir '$temp_repo_dir'" EXIT
+    
+    # Run the Python deployer with the config from the cloned repository
+    log_step "Starting deployment with Python orchestrator"
+    cd "$temp_repo_dir"
+    
+    if python3 "$deployer_script" \
+        --config "$CONFIG_FILE" \
+        --branch "$BRANCH_OR_SHA" \
+        --verbose; then
+        log_info "🎉 Deployment completed successfully!"
+        exit 0
+    else
+        log_error "Deployment failed"
+        exit 1
+    fi
+}
+
+# Handle command line arguments
+case "${1:-}" in
+    -h|--help|help|"")
+        show_usage
+        exit 0
+        ;;
+    *)
+        main "$@"
+        ;;
+esac

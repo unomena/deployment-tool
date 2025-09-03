@@ -7,7 +7,7 @@ VENV_DIR := .venv
 VENV_BIN := $(VENV_DIR)/bin
 PYTHON_VENV := $(VENV_BIN)/python
 PIP_VENV := $(VENV_BIN)/pip
-DEPLOY_SCRIPT := deploy.py
+DEPLOY_SCRIPT := scripts/deploy.py
 REQUIREMENTS := requirements.txt
 
 # Default config file (can be overridden)
@@ -33,9 +33,9 @@ help: ## Display available commands with descriptions
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "$(YELLOW)Usage examples:$(NC)"
-	@echo "  make build                    # Set up development environment"
-	@echo "  make deploy CONFIG=my.yml     # Deploy using specific config"
-	@echo "  make deploy-branch CONFIG=my.yml BRANCH=feature-x  # Deploy specific branch"
+	@echo "  make build                                    # Set up development environment"
+	@echo "  make deploy REPO_URL=<repo> BRANCH=main ENV=prod    # Deploy main branch to production"
+	@echo "  make deploy REPO_URL=<repo> BRANCH=dev ENV=dev      # Deploy dev branch to development"
 	@echo ""
 
 build: $(VENV_DIR) ## Set up virtual environment and install dependencies
@@ -74,22 +74,13 @@ validate: $(VENV_DIR) check-config ## Validate deployment configuration without 
 	$(PYTHON_VENV) -c "import yaml; config = yaml.safe_load(open('$(CONFIG)')); print('✓ YAML syntax valid')"
 	@echo "$(GREEN)✓ Configuration validation complete$(NC)"
 
-deploy: $(VENV_DIR) check-config ## Deploy application using specified config file
-	@echo "$(YELLOW)Starting deployment with config: $(CONFIG)$(NC)"
-	@echo "$(YELLOW)Branch: $(BRANCH)$(NC)"
-	@if [ $$(id -u) -ne 0 ]; then \
-		echo "$(RED)⚠ Warning: Not running as root. Some operations may require sudo.$(NC)"; \
-		echo "$(YELLOW)Consider running: sudo make deploy CONFIG=$(CONFIG)$(NC)"; \
-	fi
-	$(PYTHON_VENV) $(DEPLOY_SCRIPT) $(CONFIG) --branch $(BRANCH)
-
-deploy-branch: $(VENV_DIR) check-config ## Deploy specific branch (requires CONFIG and BRANCH variables)
-	@echo "$(YELLOW)Deploying branch '$(BRANCH)' with config: $(CONFIG)$(NC)"
-	$(PYTHON_VENV) $(DEPLOY_SCRIPT) $(CONFIG) --branch $(BRANCH)
-
-deploy-verbose: $(VENV_DIR) check-config ## Deploy with verbose output
-	@echo "$(YELLOW)Starting verbose deployment with config: $(CONFIG)$(NC)"
-	$(PYTHON_VENV) $(DEPLOY_SCRIPT) $(CONFIG) --branch $(BRANCH) --verbose
+deploy: ## Deploy application using simplified interface (requires REPO_URL, BRANCH, ENV variables)
+	@echo "$(GREEN)Starting deployment with simplified interface...$(NC)"
+	@echo "$(YELLOW)Usage: make deploy REPO_URL=<url> BRANCH=<branch> ENV=<environment>$(NC)"
+	@if [ -z "$(REPO_URL)" ]; then echo "$(RED)Error: REPO_URL is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required (prod|stage|qa|dev|branch)$(NC)"; exit 1; fi
+	./deploy $(REPO_URL) $(BRANCH) $(ENV)
 
 test: $(VENV_DIR) ## Run tests for the deployment script
 	@echo "$(YELLOW)Running deployment script tests...$(NC)"

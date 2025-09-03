@@ -80,27 +80,46 @@ chmod +x scripts/*.sh scripts/*.py
 
 ## Quick Start
 
+The deployment tool uses a simplified 3-parameter interface:
+
+```bash
+./deploy <repository_url> <branch_or_sha> <environment>
+```
+
 ### Basic Usage
 
-1. Configure your deployment in a YAML file (see `deploy-branch.yml` example):
+1. Ensure your repository contains deployment configuration files:
+   - `deploy-prod.yml` for production deployments
+   - `deploy-stage.yml` for staging deployments  
+   - `deploy-qa.yml` for QA deployments
+   - `deploy-dev.yml` for development deployments
+   - `deploy-branch.yml` for branch/feature deployments
+
+2. Deploy directly from any repository:
 ```bash
-cp deploy-branch.yml my-app-deploy.yml
-# Edit my-app-deploy.yml with your project settings
+# Deploy main branch to production
+./deploy https://github.com/myorg/myapp.git main prod
+
+# Deploy feature branch to development
+./deploy git@github.com:myorg/myapp.git feature/new-ui dev
+
+# Deploy specific version to staging
+./deploy https://github.com/myorg/myapp.git v1.2.3 stage
+
+# Deploy experimental branch for testing
+./deploy git@github.com:myorg/myapp.git experimental-feature branch
 ```
 
-2. Run the deployment:
-```bash
-make deploy CONFIG=my-app-deploy.yml BRANCH=main
-```
+### Using Makefile
 
-Or run directly:
 ```bash
-python3 deploy.py --config my-app-deploy.yml --branch main --verbose
+# Deploy with Makefile
+make deploy REPO_URL=https://github.com/myorg/myapp.git BRANCH=main ENV=prod
 ```
 
 ### Development/Testing
 
-For local testing with custom base directory:
+For development of the deployment tool itself:
 ```bash
 chmod +x deploy.py
 ```
