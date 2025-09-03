@@ -1,44 +1,106 @@
-# PyDeployer - Django Deployment Automation
+# PyDeployer - Modular Django Deployment Automation Tool
 
-A comprehensive deployment automation tool for Django applications that reads YAML configuration files and sets up complete deployment environments on Ubuntu LTS systems.
+PyDeployer is a lightweight, modular deployment automation tool designed specifically for Django applications on Ubuntu LTS systems. It uses a separation-of-concerns architecture where a Python orchestrator coordinates focused shell and Python scripts to handle different deployment aspects.
+
+## Architecture
+
+- **Lightweight Orchestrator**: `deploy.py` coordinates deployment workflow
+- **Focused Scripts**: Each script in `scripts/` handles one specific deployment aspect
+- **Environment Variables**: Configuration and data passing between orchestrator and scripts
+- **Modular Design**: Testable, maintainable, and reusable components
 
 ## Features
 
-- **System Dependencies**: Automatically installs Ubuntu packages via `apt-get`
-- **Python Environment**: Creates virtual environments with specific Python versions
-- **Repository Management**: Clones Git repositories with branch support
-- **Supervisor Integration**: Generates and installs Supervisor configurations for services
-- **Multi-Environment Support**: Supports `prod`, `qa`, `stage`, and `dev` environments
-- **Validation**: Comprehensive deployment validation and health checks
-- **Structured Deployment**: Organized folder structure under `/srv/deployments/`
+- **Modular Script Architecture**: Separate scripts for each deployment concern
+- **Automated Environment Setup**: Python virtual environments with version management
+- **Dependency Management**: System and Python dependencies from YAML configuration
+- **Database Integration**: PostgreSQL setup with user permissions and validation
+- **Process Management**: Dynamic Supervisor configuration generation and installation
+- **Git Integration**: Repository cloning with branch support and SSH keys
+- **Comprehensive Validation**: Multi-level deployment validation and health checks
+- **Hook System**: Pre/post-deploy hooks supporting both commands and scripts
+- **Error Handling**: Detailed logging with color-coded output and proper exit codes
+
+## Modular Scripts
+
+### Core Deployment Scripts
+- `install-system-dependencies.sh` - Ubuntu system package installation
+- `setup-python-environment.sh` - Python virtual environment with version management
+- `clone-repository.sh` - Git repository cloning with branch and SSH support
+- `install-python-dependencies.sh` - Python packages and requirements installation
+- `generate-supervisor-configs.py` - Dynamic Supervisor configuration generation
+- `install-supervisor-configs.sh` - System Supervisor configuration installation
+- `validate-deployment.sh` - Complete deployment validation
+
+### Django-Specific Scripts
+- `verify-postgresql-database.sh` - PostgreSQL database setup and verification
+- `validate-django-environment.sh` - Django environment and configuration validation
+- `create-django-superuser.sh` - Django admin user creation with validation
 
 ## Directory Structure
 
-The tool creates a standardized directory structure:
-
 ```
-/srv/deployments/
-└── <project-name>/
-    └── <environment>/
-        └── <branch>/
-            ├── code/           # Application code
-            ├── config/         # Configuration files
-            │   ├── supervisor/ # Supervisor service configs
-            │   └── nginx/      # Nginx configs (future)
-            ├── logs/           # Log files
-            │   ├── supervisor/ # Supervisor logs
-            │   └── app/        # Application logs
-            └── venv/           # Python virtual environment
+/srv/deployments/{project}/{environment}/{branch}/
+├── code/           # Application source code (cloned repository)
+├── config/         # Generated configuration files
+│   ├── supervisor/ # Supervisor service configurations
+│   └── nginx/      # Nginx configurations (if applicable)
+├── logs/           # Application and service logs
+│   ├── supervisor/ # Supervisor process logs
+│   └── app/        # Application logs
+└── venv/           # Python virtual environment
 ```
 
 ## Installation
 
-1. Install Python dependencies:
+### Prerequisites
+
+- **Ubuntu LTS Server** (18.04, 20.04, 22.04, or later)
+- **Python 3.8+** (Python 3.12 recommended)
+- **Git** for repository operations
+- **sudo privileges** for system package installation
+
+### Setup on Ubuntu Server
+
+1. Clone the repository:
 ```bash
-pip install -r requirements.txt
+git clone <repository-url>
+cd deployment-tool
 ```
 
-2. Make the script executable:
+2. Install Python dependencies:
+```bash
+make build
+```
+
+3. Ensure scripts are executable (should already be set):
+```bash
+chmod +x scripts/*.sh scripts/*.py
+```
+
+## Quick Start
+
+### Basic Usage
+
+1. Configure your deployment in a YAML file (see `deploy-branch.yml` example):
+```bash
+cp deploy-branch.yml my-app-deploy.yml
+# Edit my-app-deploy.yml with your project settings
+```
+
+2. Run the deployment:
+```bash
+make deploy CONFIG=my-app-deploy.yml BRANCH=main
+```
+
+Or run directly:
+```bash
+python3 deploy.py --config my-app-deploy.yml --branch main --verbose
+```
+
+### Development/Testing
+
+For local testing with custom base directory:
 ```bash
 chmod +x deploy.py
 ```
