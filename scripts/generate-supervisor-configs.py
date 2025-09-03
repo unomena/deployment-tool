@@ -129,7 +129,7 @@ class SupervisorConfigGenerator:
             port = service.get('port', 8000)
             # Modify command to include workers and bind parameters
             if '--workers' not in command and '--bind' not in command:
-                full_command = f"{self.venv_path}/bin/{command} --workers {workers} --bind 127.0.0.1:{port}"
+                full_command = f"{self.venv_path}/bin/{command} --workers {workers} --bind 0.0.0.0:{port}"
             supervisor_numprocs = 1  # Only one supervisor process for gunicorn
         else:
             # For non-gunicorn services, use supervisor's process management
