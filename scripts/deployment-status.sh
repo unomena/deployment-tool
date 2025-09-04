@@ -95,10 +95,12 @@ get_deployment_info() {
 # Get supervisor services for a project
 get_supervisor_services() {
     local project="$1"
+    local environment="$2"
     local services=()
     
-    # Get all running services for this project from supervisorctl
-    local all_services=$(sudo supervisorctl status "$project:*" 2>/dev/null | grep -E "^$project:" || true)
+    # Get all running services for this project and environment from supervisorctl
+    local group_name="${project}-${environment}"
+    local all_services=$(sudo supervisorctl status "${group_name}:*" 2>/dev/null | grep -E "^${group_name}:" || true)
     
     if [[ -n "$all_services" ]]; then
         while IFS= read -r line; do
@@ -122,49 +124,8 @@ get_supervisor_services() {
         done <<< "$all_services"
     fi
     
-    # Also check individual config files for services not in groups
-    if [[ -d "$SUPERVISOR_CONF_DIR" ]]; then
-        for config_file in "$SUPERVISOR_CONF_DIR"/${project}-*.conf; do
-            if [[ -f "$config_file" ]]; then
-                # Skip group configuration files
-                if grep -q "^\[group:" "$config_file" 2>/dev/null; then
-                    continue
-                fi
-                
-                local service_name=$(basename "$config_file" .conf)
-                
-                # Skip if we already found this service in the group listing
-                # Also skip if this is a multi-process service (numprocs > 1) that creates _XX variants
-                local already_found=false
-                for existing_service in "${services[@]}"; do
-                    local existing_name=$(echo "$existing_service" | cut -d'|' -f1)
-                    if [[ "$existing_name" == "$service_name" ]] || [[ "$existing_name" == "${service_name}_"* ]]; then
-                        already_found=true
-                        break
-                    fi
-                done
-                
-                if [[ "$already_found" == false ]]; then
-                    local status="STOPPED"
-                    local pid=""
-                    
-                    local supervisor_status=$(sudo supervisorctl status "$service_name" 2>/dev/null || echo "")
-                    if [[ -n "$supervisor_status" ]]; then
-                        if echo "$supervisor_status" | grep -q "RUNNING"; then
-                            status="RUNNING"
-                            pid=$(echo "$supervisor_status" | grep -o "pid [0-9]*" | cut -d' ' -f2)
-                        elif echo "$supervisor_status" | grep -q "STOPPED"; then
-                            status="STOPPED"
-                        elif echo "$supervisor_status" | grep -q "FATAL"; then
-                            status="FATAL"
-                        fi
-                    fi
-                    
-                    services+=("$service_name|$status|$pid")
-                fi
-            fi
-        done
-    fi
+    # No need to check individual config files since we're using environment-specific groups
+    # All services should be in the group now
     
     printf '%s\n' "${services[@]}"
 }
@@ -177,10 +138,15 @@ get_port_info() {
     local deployment_path="$DEPLOYMENT_BASE_DIR/$project/$environment/$branch"
     local ports=()
     
-    # Check supervisor configs for port information
+    # Check supervisor configs for port information (environment-specific)
     if [[ -d "$SUPERVISOR_CONF_DIR" ]]; then
-        for config_file in "$SUPERVISOR_CONF_DIR"/${project}-*.conf; do
+        for config_file in "$SUPERVISOR_CONF_DIR"/${project}-${environment}-*.conf; do
             if [[ -f "$config_file" ]]; then
+                # Skip group configuration files
+                if grep -q "^\[group:" "$config_file" 2>/dev/null; then
+                    continue
+                fi
+                
                 # Look for port numbers in the config file
                 local found_ports=$(grep -o ":[0-9]\{4,5\}" "$config_file" 2>/dev/null | tr -d ':' | sort -u || true)
                 for port in $found_ports; do
@@ -288,7 +254,7 @@ generate_report() {
     local all_services_found=false
     for deployment in "${deployments[@]}"; do
         IFS='|' read -r project environment branch <<< "$deployment"
-        local services=$(get_supervisor_services "$project")
+        local services=$(get_supervisor_services "$project" "$environment")
         if [[ -n "$services" ]]; then
             all_services_found=true
             while IFS='|' read -r service_name status pid; do
@@ -320,13 +286,26 @@ generate_report() {
     printf "%-8s %-20s %-15s %-15s\n" "----" "---------------" "----" "-------"
     
     local all_ports_found=false
+    local unique_ports=()
     for deployment in "${deployments[@]}"; do
         IFS='|' read -r project environment branch <<< "$deployment"
         local ports=$(get_port_info "$project" "$environment" "$branch")
         if [[ -n "$ports" ]]; then
             all_ports_found=true
             while IFS='|' read -r port service type; do
-                printf "%-8s %-20s %-15s %-15s\n" "$port" "$service" "$type" "$project"
+                local port_entry="$port|$service|$type|$project"
+                # Check if this port entry already exists to avoid duplicates
+                local duplicate=false
+                for existing_port in "${unique_ports[@]}"; do
+                    if [[ "$existing_port" == "$port_entry" ]]; then
+                        duplicate=true
+                        break
+                    fi
+                done
+                if [[ "$duplicate" == false ]]; then
+                    unique_ports+=("$port_entry")
+                    printf "%-8s %-20s %-15s %-15s\n" "$port" "$service" "$type" "$project"
+                fi
             done <<< "$ports"
         fi
     done
