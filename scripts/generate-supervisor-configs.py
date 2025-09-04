@@ -169,8 +169,9 @@ class SupervisorConfigGenerator:
             # For non-gunicorn services, use supervisor's process management
             supervisor_numprocs = service.get('workers', 1)
         
-        # Generate configuration
-        config_content = f"""[program:{self.project_name}-{service_name}]
+        # Generate configuration with environment isolation
+        environment = self.config_data.get('environment', 'dev')
+        config_content = f"""[program:{self.project_name}-{environment}-{service_name}]
 command={full_command}
 directory={working_dir}
 user={self.user}
@@ -234,7 +235,8 @@ numprocs={supervisor_numprocs}"""
 
     def _write_config_file(self, service_name: str, config_content: str) -> None:
         """Write configuration file for a service"""
-        config_filename = f"{self.project_name}-{service_name}.conf"
+        environment = self.config_data.get('environment', 'dev')
+        config_filename = f"{self.project_name}-{environment}-{service_name}.conf"
         config_filepath = self.config_output_dir / config_filename
         
         try:
@@ -252,10 +254,11 @@ numprocs={supervisor_numprocs}"""
         if len(services) <= 1:
             return ""  # No group needed for single service
         
-        service_names = [f"{self.project_name}-{service['name']}" for service in services]
+        environment = self.config_data.get('environment', 'dev')
+        service_names = [f"{self.project_name}-{environment}-{service['name']}" for service in services]
         programs = ','.join(service_names)
         
-        group_config = f"""[group:{self.project_name}]
+        group_config = f"""[group:{self.project_name}-{environment}]
 programs={programs}
 priority=999
 """
@@ -266,7 +269,8 @@ priority=999
         if not group_config:
             return
         
-        group_filename = f"{self.project_name}-group.conf"
+        environment = self.config_data.get('environment', 'dev')
+        group_filename = f"{self.project_name}-{environment}-group.conf"
         group_filepath = self.config_output_dir / group_filename
         
         try:
