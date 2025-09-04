@@ -111,8 +111,11 @@ class SupervisorConfigGenerator:
         
         # Determine working directory
         working_dir = self.code_path
-        if 'working_directory' in service:
-            # If service specifies a working directory, append it to code_path
+        if 'directory' in service:
+            # If service specifies a directory, append it to code_path
+            working_dir = self.code_path / service['directory']
+        elif 'working_directory' in service:
+            # If service specifies a working directory, append it to code_path (legacy support)
             working_dir = self.code_path / service['working_directory']
         
         # Build environment variables

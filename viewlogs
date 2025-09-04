@@ -1,0 +1,5 @@
+#!/bin/bash
+# viewlogs - View deployment service logs for debugging
+
+# Source the view-logs script
+exec "$(dirname "$0")/scripts/view-logs.sh" "$@"
