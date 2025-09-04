@@ -53,3 +53,6 @@ test-deployment/
 # Deployment artifacts
 /srv/
 deployments/
+
+# Configuration files with sensitive data
+config.yml

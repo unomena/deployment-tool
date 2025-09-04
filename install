@@ -1,0 +1,547 @@
+#!/bin/bash
+# install - System Installation Script for PyDeployer
+# 
+# This script installs all required system dependencies for the PyDeployer
+# deployment automation tool on a fresh Ubuntu LTS system.
+#
+# Usage: sudo ./install
+#
+# Requirements:
+#   - Ubuntu 20.04 LTS or newer
+#   - Root/sudo privileges
+#   - Internet connection
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[✓]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo
+    echo -e "${CYAN}=================================================================================${NC}"
+    echo -e "${CYAN}$1${NC}"
+    echo -e "${CYAN}=================================================================================${NC}"
+    echo
+}
+
+# Check if running as root
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        print_error "This script must be run as root (use sudo ./install)"
+        exit 1
+    fi
+}
+
+# Check Ubuntu version
+check_ubuntu_version() {
+    if [[ ! -f /etc/lsb-release ]]; then
+        print_error "This script is designed for Ubuntu systems"
+        exit 1
+    fi
+    
+    source /etc/lsb-release
+    
+    if [[ "$DISTRIB_ID" != "Ubuntu" ]]; then
+        print_error "This script is designed for Ubuntu systems"
+        exit 1
+    fi
+    
+    # Extract major version number
+    UBUNTU_VERSION=$(echo $DISTRIB_RELEASE | cut -d. -f1)
+    
+    if [[ $UBUNTU_VERSION -lt 20 ]]; then
+        print_error "Ubuntu 20.04 LTS or newer is required. Found: $DISTRIB_RELEASE"
+        exit 1
+    fi
+    
+    print_success "Ubuntu $DISTRIB_RELEASE detected"
+}
+
+# Generate secure random password
+generate_password() {
+    openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+}
+
+# Update system packages
+update_system() {
+    print_header "UPDATING SYSTEM PACKAGES"
+    
+    print_status "Updating package lists..."
+    apt-get update -qq
+    
+    print_status "Upgrading existing packages..."
+    apt-get upgrade -y -qq
+    
+    print_success "System packages updated"
+}
+
+# Install basic system dependencies
+install_basic_dependencies() {
+    print_header "INSTALLING BASIC SYSTEM DEPENDENCIES"
+    
+    local packages=(
+        "curl"
+        "wget"
+        "git"
+        "make"
+        "build-essential"
+        "software-properties-common"
+        "apt-transport-https"
+        "ca-certificates"
+        "gnupg"
+        "lsb-release"
+        "unzip"
+        "htop"
+        "tree"
+        "jq"
+        "openssl"
+    )
+    
+    print_status "Installing basic packages: ${packages[*]}"
+    apt-get install -y -qq "${packages[@]}"
+    
+    print_success "Basic system dependencies installed"
+}
+
+# Install Python and related tools
+install_python() {
+    print_header "INSTALLING PYTHON AND DEVELOPMENT TOOLS"
+    
+    local python_packages=(
+        "python3"
+        "python3-pip"
+        "python3-venv"
+        "python3-dev"
+        "python3-setuptools"
+        "python3-wheel"
+    )
+    
+    print_status "Installing Python packages: ${python_packages[*]}"
+    apt-get install -y -qq "${python_packages[@]}"
+    
+    # Create python3 symlink if it doesn't exist
+    if ! command -v python &> /dev/null; then
+        print_status "Creating python symlink to python3"
+        ln -sf /usr/bin/python3 /usr/bin/python
+    fi
+    
+    # Upgrade pip
+    print_status "Upgrading pip..."
+    python3 -m pip install --upgrade pip
+    
+    print_success "Python and development tools installed"
+    python3 --version
+    pip3 --version
+}
+
+# Install PostgreSQL
+install_postgresql() {
+    print_header "INSTALLING AND CONFIGURING POSTGRESQL"
+    
+    print_status "Installing PostgreSQL..."
+    apt-get install -y -qq postgresql postgresql-contrib postgresql-client
+    
+    # Start and enable PostgreSQL
+    print_status "Starting PostgreSQL service..."
+    systemctl start postgresql
+    systemctl enable postgresql
+    
+    # Generate secure password for postgres user
+    POSTGRES_PASSWORD=$(generate_password)
+    
+    print_status "Configuring PostgreSQL authentication..."
+    
+    # Set password for postgres user
+    sudo -u postgres psql -c "ALTER USER postgres PASSWORD '$POSTGRES_PASSWORD';"
+    
+    # Configure PostgreSQL for password authentication
+    PG_VERSION=$(sudo -u postgres psql -t -c "SELECT version();" | grep -oP '\d+\.\d+' | head -1)
+    PG_MAJOR_VERSION=$(echo $PG_VERSION | cut -d. -f1)
+    
+    # Find the correct config directory
+    PG_CONFIG_DIR="/etc/postgresql/$PG_MAJOR_VERSION/main"
+    if [[ ! -d "$PG_CONFIG_DIR" ]]; then
+        # Try to find the config directory
+        PG_CONFIG_DIR=$(find /etc/postgresql -name "postgresql.conf" -type f | head -1 | xargs dirname)
+    fi
+    
+    if [[ -d "$PG_CONFIG_DIR" ]]; then
+        print_status "Configuring PostgreSQL authentication in $PG_CONFIG_DIR"
+        
+        # Backup original files
+        cp "$PG_CONFIG_DIR/pg_hba.conf" "$PG_CONFIG_DIR/pg_hba.conf.backup"
+        cp "$PG_CONFIG_DIR/postgresql.conf" "$PG_CONFIG_DIR/postgresql.conf.backup"
+        
+        # Configure pg_hba.conf for password authentication
+        cat > "$PG_CONFIG_DIR/pg_hba.conf" << EOF
+# PostgreSQL Client Authentication Configuration File
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# "local" is for Unix domain socket connections only
+local   all             postgres                                peer
+local   all             all                                     md5
+
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            md5
+
+# IPv6 local connections:
+host    all             all             ::1/128                 md5
+
+# Allow replication connections from localhost, by a user with the
+# replication privilege.
+local   replication     all                                     peer
+host    replication     all             127.0.0.1/32            md5
+host    replication     all             ::1/128                 md5
+EOF
+        
+        # Configure postgresql.conf for local connections
+        sed -i "s/#listen_addresses = 'localhost'/listen_addresses = 'localhost'/" "$PG_CONFIG_DIR/postgresql.conf"
+        sed -i "s/#port = 5432/port = 5432/" "$PG_CONFIG_DIR/postgresql.conf"
+        
+        # Restart PostgreSQL to apply changes
+        print_status "Restarting PostgreSQL to apply configuration changes..."
+        systemctl restart postgresql
+        
+        # Test connection
+        print_status "Testing PostgreSQL connection..."
+        if PGPASSWORD="$POSTGRES_PASSWORD" psql -h localhost -U postgres -c "SELECT version();" > /dev/null 2>&1; then
+            print_success "PostgreSQL connection test successful"
+        else
+            print_error "PostgreSQL connection test failed"
+            exit 1
+        fi
+    else
+        print_error "Could not find PostgreSQL configuration directory"
+        exit 1
+    fi
+    
+    print_success "PostgreSQL installed and configured"
+    print_status "PostgreSQL root user: postgres"
+    print_status "PostgreSQL root password: $POSTGRES_PASSWORD"
+}
+
+# Install Redis
+install_redis() {
+    print_header "INSTALLING AND CONFIGURING REDIS"
+    
+    print_status "Installing Redis..."
+    apt-get install -y -qq redis-server
+    
+    # Configure Redis
+    print_status "Configuring Redis..."
+    
+    # Backup original config
+    cp /etc/redis/redis.conf /etc/redis/redis.conf.backup
+    
+    # Configure Redis for local access
+    sed -i 's/^bind 127.0.0.1 ::1/bind 127.0.0.1/' /etc/redis/redis.conf
+    sed -i 's/^# requirepass foobared/requirepass/' /etc/redis/redis.conf
+    sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
+    
+    # Start and enable Redis
+    print_status "Starting Redis service..."
+    systemctl start redis-server
+    systemctl enable redis-server
+    
+    # Test Redis connection
+    print_status "Testing Redis connection..."
+    if redis-cli ping | grep -q "PONG"; then
+        print_success "Redis connection test successful"
+    else
+        print_error "Redis connection test failed"
+        exit 1
+    fi
+    
+    print_success "Redis installed and configured"
+}
+
+# Install Supervisor
+install_supervisor() {
+    print_header "INSTALLING AND CONFIGURING SUPERVISOR"
+    
+    print_status "Installing Supervisor..."
+    apt-get install -y -qq supervisor
+    
+    # Start and enable Supervisor
+    print_status "Starting Supervisor service..."
+    systemctl start supervisor
+    systemctl enable supervisor
+    
+    # Create deployment configs directory
+    print_status "Creating Supervisor configuration directories..."
+    mkdir -p /etc/supervisor/conf.d
+    
+    # Test Supervisor
+    print_status "Testing Supervisor..."
+    if supervisorctl status > /dev/null 2>&1; then
+        print_success "Supervisor test successful"
+    else
+        print_error "Supervisor test failed"
+        exit 1
+    fi
+    
+    print_success "Supervisor installed and configured"
+}
+
+# Install Nginx
+install_nginx() {
+    print_header "INSTALLING AND CONFIGURING NGINX"
+    
+    print_status "Installing Nginx..."
+    apt-get install -y -qq nginx
+    
+    # Start and enable Nginx
+    print_status "Starting Nginx service..."
+    systemctl start nginx
+    systemctl enable nginx
+    
+    # Create sites directory structure
+    print_status "Creating Nginx configuration directories..."
+    mkdir -p /etc/nginx/sites-available
+    mkdir -p /etc/nginx/sites-enabled
+    
+    # Remove default site if it exists
+    if [[ -f /etc/nginx/sites-enabled/default ]]; then
+        rm -f /etc/nginx/sites-enabled/default
+    fi
+    
+    # Test Nginx configuration
+    print_status "Testing Nginx configuration..."
+    if nginx -t > /dev/null 2>&1; then
+        print_success "Nginx configuration test successful"
+        systemctl reload nginx
+    else
+        print_error "Nginx configuration test failed"
+        exit 1
+    fi
+    
+    print_success "Nginx installed and configured"
+}
+
+# Create deployment directories
+create_deployment_directories() {
+    print_header "CREATING DEPLOYMENT DIRECTORIES"
+    
+    local directories=(
+        "/srv/deployments"
+        "/var/log/deployments"
+        "/etc/deployment-tool"
+    )
+    
+    for dir in "${directories[@]}"; do
+        print_status "Creating directory: $dir"
+        mkdir -p "$dir"
+        chown -R ubuntu:ubuntu "$dir" 2>/dev/null || true
+    done
+    
+    print_success "Deployment directories created"
+}
+
+# Generate configuration file
+generate_config() {
+    print_header "GENERATING DEPLOYMENT TOOL CONFIGURATION"
+    
+    local config_file="$(dirname "$0")/config.yml"
+    
+    print_status "Generating config.yml with database credentials..."
+    
+    cat > "$config_file" << EOF
+# PyDeployer Configuration File
+# Generated automatically by install script on $(date)
+# 
+# This file contains database server configurations with root credentials
+# for administrative operations like database and user creation.
+
+databases:
+  - name: localhost-postgresql
+    type: postgresql
+    root_user: postgres
+    root_password: $POSTGRES_PASSWORD
+    host: localhost
+    port: 5432
+    description: "Local PostgreSQL server for development and staging"
+
+# Additional database servers can be added here for production deployments
+# Example:
+# - name: production-postgresql
+#   type: postgresql
+#   root_user: admin
+#   root_password: secure_password_here
+#   host: prod-db.example.com
+#   port: 5432
+#   description: "Production PostgreSQL server"
+
+# Redis configuration (if needed for session storage, caching, etc.)
+redis:
+  - name: localhost-redis
+    host: localhost
+    port: 6379
+    password: ""
+    description: "Local Redis server for caching and task queues"
+EOF
+
+    # Set appropriate permissions
+    chmod 600 "$config_file"
+    chown ubuntu:ubuntu "$config_file" 2>/dev/null || true
+    
+    print_success "Configuration file generated: $config_file"
+    print_warning "IMPORTANT: Keep this file secure - it contains database passwords!"
+}
+
+# Setup firewall (optional)
+setup_firewall() {
+    print_header "CONFIGURING FIREWALL (OPTIONAL)"
+    
+    if command -v ufw &> /dev/null; then
+        print_status "Configuring UFW firewall..."
+        
+        # Allow SSH
+        ufw allow ssh
+        
+        # Allow HTTP and HTTPS
+        ufw allow 80/tcp
+        ufw allow 443/tcp
+        
+        # Allow PostgreSQL (local only)
+        ufw allow from 127.0.0.1 to any port 5432
+        
+        # Allow Redis (local only)
+        ufw allow from 127.0.0.1 to any port 6379
+        
+        print_status "Firewall rules configured (not enabled)"
+        print_warning "To enable firewall, run: sudo ufw enable"
+    else
+        print_status "UFW not available, skipping firewall configuration"
+    fi
+}
+
+# Display installation summary
+show_summary() {
+    print_header "INSTALLATION COMPLETE"
+    
+    echo -e "${GREEN}✓ System packages updated${NC}"
+    echo -e "${GREEN}✓ Python 3 and development tools installed${NC}"
+    echo -e "${GREEN}✓ PostgreSQL installed and configured${NC}"
+    echo -e "${GREEN}✓ Redis installed and configured${NC}"
+    echo -e "${GREEN}✓ Supervisor installed and configured${NC}"
+    echo -e "${GREEN}✓ Nginx installed and configured${NC}"
+    echo -e "${GREEN}✓ Deployment directories created${NC}"
+    echo -e "${GREEN}✓ Configuration file generated${NC}"
+    echo
+    
+    print_header "IMPORTANT INFORMATION"
+    
+    echo -e "${YELLOW}Database Credentials:${NC}"
+    echo -e "  PostgreSQL User: ${CYAN}postgres${NC}"
+    echo -e "  PostgreSQL Password: ${CYAN}$POSTGRES_PASSWORD${NC}"
+    echo -e "  Connection: ${CYAN}psql -h localhost -U postgres${NC}"
+    echo
+    
+    echo -e "${YELLOW}Service Status:${NC}"
+    systemctl is-active --quiet postgresql && echo -e "  PostgreSQL: ${GREEN}Running${NC}" || echo -e "  PostgreSQL: ${RED}Stopped${NC}"
+    systemctl is-active --quiet redis-server && echo -e "  Redis: ${GREEN}Running${NC}" || echo -e "  Redis: ${RED}Stopped${NC}"
+    systemctl is-active --quiet supervisor && echo -e "  Supervisor: ${GREEN}Running${NC}" || echo -e "  Supervisor: ${RED}Stopped${NC}"
+    systemctl is-active --quiet nginx && echo -e "  Nginx: ${GREEN}Running${NC}" || echo -e "  Nginx: ${RED}Stopped${NC}"
+    echo
+    
+    echo -e "${YELLOW}Next Steps:${NC}"
+    echo -e "  1. Review the generated config.yml file"
+    echo -e "  2. Test the deployment tool: ${CYAN}./deploy --help${NC}"
+    echo -e "  3. Deploy your first application"
+    echo -e "  4. Consider enabling the firewall: ${CYAN}sudo ufw enable${NC}"
+    echo
+    
+    print_success "PyDeployer installation completed successfully!"
+}
+
+# Main installation function
+main() {
+    print_header "PYDEPLOYER SYSTEM INSTALLATION"
+    
+    print_status "Starting installation on $(hostname) at $(date)"
+    
+    # Pre-installation checks
+    check_root
+    check_ubuntu_version
+    
+    # Installation steps
+    update_system
+    install_basic_dependencies
+    install_python
+    install_postgresql
+    install_redis
+    install_supervisor
+    install_nginx
+    create_deployment_directories
+    generate_config
+    setup_firewall
+    
+    # Show summary
+    show_summary
+}
+
+# Handle command line arguments
+case "${1:-}" in
+    -h|--help|help)
+        cat << EOF
+PyDeployer System Installation Script
+
+USAGE:
+    sudo ./install
+
+DESCRIPTION:
+    Installs all required system dependencies for PyDeployer on Ubuntu LTS:
+    - PostgreSQL with authentication configured
+    - Redis server
+    - Supervisor process manager
+    - Nginx web server
+    - Python 3 and development tools
+    - Build tools and utilities
+
+REQUIREMENTS:
+    - Ubuntu 20.04 LTS or newer
+    - Root/sudo privileges
+    - Internet connection
+
+WHAT IT DOES:
+    - Updates system packages
+    - Installs and configures all required services
+    - Creates deployment directories
+    - Generates config.yml with database credentials
+    - Sets up proper authentication and permissions
+
+SECURITY:
+    - Generates secure random passwords
+    - Configures services for local access only
+    - Sets appropriate file permissions
+    - Provides firewall configuration guidance
+
+EOF
+        exit 0
+        ;;
+    *)
+        main "$@"
+        ;;
+esac
