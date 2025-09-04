@@ -147,9 +147,14 @@ install_python() {
         ln -sf /usr/bin/python3 /usr/bin/python
     fi
     
-    # Upgrade pip
-    print_status "Upgrading pip..."
-    python3 -m pip install --upgrade pip
+    # Handle pip upgrade for different Ubuntu versions
+    print_status "Checking pip installation..."
+    if python3 -m pip install --upgrade pip > /dev/null 2>&1; then
+        print_success "Pip upgraded successfully"
+    else
+        print_warning "Pip upgrade skipped (externally-managed-environment)"
+        print_status "Using system-managed pip - this is normal on Ubuntu 24.04+"
+    fi
     
     print_success "Python and development tools installed"
     python3 --version
