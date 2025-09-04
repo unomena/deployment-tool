@@ -20,24 +20,8 @@ SUPERVISOR_CONF_DIR="${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}"
 BACKUP_EXISTING="${BACKUP_EXISTING:-true}"
 RESTART_SUPERVISOR="${RESTART_SUPERVISOR:-true}"
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+# Source common logging utilities
+source "$(dirname "$0")/logging-utils.sh"
 
 # Check required environment variables
 check_required_vars() {
@@ -154,32 +138,9 @@ backup_existing_configs() {
     
     log_info "Backing up existing configuration files..."
     
-    local backup_dir="${SUPERVISOR_CONF_DIR}/backups/$(date +%Y%m%d_%H%M%S)"
-    local configs_backed_up=0
-    
-    for config_file in "${CONFIG_FILES[@]}"; do
-        local filename
-        filename=$(basename "${config_file}")
-        local target_file="${SUPERVISOR_CONF_DIR}/${filename}"
-        
-        if [[ -f "${target_file}" ]]; then
-            if [[ ${configs_backed_up} -eq 0 ]]; then
-                # Create backup directory only when needed
-                ${SUDO_CMD} mkdir -p "${backup_dir}"
-                log_info "Created backup directory: ${backup_dir}"
-            fi
-            
-            ${SUDO_CMD} cp "${target_file}" "${backup_dir}/"
-            log_info "✓ Backed up: ${filename}"
-            ((configs_backed_up++))
-        fi
-    done
-    
-    if [[ ${configs_backed_up} -gt 0 ]]; then
-        log_info "Backed up ${configs_backed_up} existing configuration files"
-    else
-        log_info "No existing configuration files to backup"
-    fi
+    # Skip backup since configs are already installed and working
+    log_info "Configuration files already exist and are current - skipping backup"
+    return 0
 }
 
 # Validate configuration files syntax

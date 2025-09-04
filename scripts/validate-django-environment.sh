@@ -19,31 +19,15 @@ set -e  # Exit on any error
 # Default values - PROJECT_PYTHON_PATH is required and set by deployment orchestrator
 DJANGO_PROJECT_DIR="${DJANGO_PROJECT_DIR:-.}"
 
+# Source common logging utilities
+source "$(dirname "$0")/logging-utils.sh"
+
 # Validate PROJECT_PYTHON_PATH is provided
 if [[ -z "${PROJECT_PYTHON_PATH}" ]]; then
-    echo -e "\033[0;31m[ERROR]\033[0m PROJECT_PYTHON_PATH is required but not set"
-    echo -e "\033[0;31m[ERROR]\033[0m This should be set by the deployment orchestrator"
+    log_error "PROJECT_PYTHON_PATH is required but not set"
+    log_error "This should be set by the deployment orchestrator"
     exit 1
 fi
-
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
 
 # Check required environment variables
 check_required_vars() {
@@ -106,10 +90,15 @@ if missing_vars:
 print("✓ All required environment variables are present")
 
 # Display configuration summary
-print(f"Django Settings Module: {os.environ.get(\"DJANGO_SETTINGS_MODULE\")}")
-print(f"Database Name: {os.environ.get(\"DB_NAME\")}")
-print(f"Database User: {os.environ.get(\"DB_USER\")}")
-print(f"Debug Mode: {os.environ.get(\"DEBUG\", \"Not set\")}")
+django_settings = os.environ.get("DJANGO_SETTINGS_MODULE")
+db_name = os.environ.get("DB_NAME")
+db_user = os.environ.get("DB_USER")
+debug_mode = os.environ.get("DEBUG", "Not set")
+
+print(f"Django Settings Module: {django_settings}")
+print(f"Database Name: {db_name}")
+print(f"Database User: {db_user}")
+print(f"Debug Mode: {debug_mode}")
 '
     
     if ! ${PROJECT_PYTHON_PATH} -c "${validation_script}"; then
@@ -148,8 +137,10 @@ try:
         raise Exception("No default database configuration found")
     print("✓ Database configuration found")
     
-    print(f"Database Engine: {db_config.get(\"ENGINE\", \"Unknown\")}")
-    print(f"Database Name: {db_config.get(\"NAME\", \"Unknown\")}")
+    db_engine = db_config.get("ENGINE", "Unknown")
+    db_name = db_config.get("NAME", "Unknown")
+    print(f"Database Engine: {db_engine}")
+    print(f"Database Name: {db_name}")
     
 except Exception as e:
     print(f"ERROR: Django setup failed: {e}")
@@ -157,6 +148,12 @@ except Exception as e:
 '
     
     cd "${DJANGO_PROJECT_DIR}"
+    
+    # Add the src directory to Python path for Django imports
+    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    
+    # Create logs directory if it doesn't exist
+    mkdir -p "${DJANGO_PROJECT_DIR}/src/logs"
     
     if ! ${PROJECT_PYTHON_PATH} -c "${django_test_script}"; then
         log_error "Django setup test failed"
@@ -264,7 +261,7 @@ except ImportError:
     sys.exit(1)
 '
     
-    if ! ${PYTHON_PATH} -c "${package_check_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} -c "${package_check_script}"; then
         log_error "Django package check failed"
         exit 1
     fi
@@ -276,7 +273,7 @@ except ImportError:
 main() {
     log_info "Starting Django environment validation"
     log_info "Project directory: ${DJANGO_PROJECT_DIR}"
-    log_info "Python executable: ${PYTHON_PATH}"
+    log_info "Python executable: ${PROJECT_PYTHON_PATH}"
     
     # Run all checks
     check_required_vars

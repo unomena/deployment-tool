@@ -1,0 +1,5 @@
+#!/bin/bash
+# status - Quick deployment status command
+# Simple wrapper around deployment-status.sh
+
+exec "$(dirname "$0")/scripts/deployment-status.sh" "$@"

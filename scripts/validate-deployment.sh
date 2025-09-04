@@ -25,32 +25,8 @@ SKIP_DEPENDENCY_CHECK="${SKIP_DEPENDENCY_CHECK:-false}"
 SKIP_SUPERVISOR_CHECK="${SKIP_SUPERVISOR_CHECK:-false}"
 SUPERVISOR_CONF_DIR="${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}"
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
-
-log_failure() {
-    echo -e "${RED}[✗]${NC} $1"
-}
+# Source common logging utilities
+source "$(dirname "$0")/logging-utils.sh"
 
 # Check required environment variables
 check_required_vars() {
@@ -81,15 +57,15 @@ validate_check() {
     local check_name="$1"
     local check_result="$2"
     
-    ((TOTAL_CHECKS++))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
     
     if [[ "${check_result}" == "0" ]]; then
         log_success "${check_name}"
-        ((PASSED_CHECKS++))
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
         return 0
     else
         log_failure "${check_name}"
-        ((FAILED_CHECKS++))
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
         return 1
     fi
 }

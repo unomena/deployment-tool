@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import argparse
+import re
 import yaml
 import json
 from pathlib import Path
@@ -83,6 +84,21 @@ class PyDeployer:
             'BRANCH': self.branch,
         }
         
+        # Add database servers configuration file path if it exists
+        db_config_locations = [
+            Path('/etc/deployment-tool/db-servers.yml'),
+            Path('/srv/deployment-tool/config/db-servers.yml'),
+            Path.home() / '.deployment-tool' / 'db-servers.yml',
+            Path('/opt/deployment-tool/config/db-servers.yml'),
+            self.scripts_path.parent / 'config.yml',  # Check project root config.yml
+        ]
+        
+        for config_path in db_config_locations:
+            if config_path.exists():
+                env_vars['DB_SERVERS_CONFIG'] = str(config_path)
+                logger.info(f"Found database servers config at: {config_path}")
+                break
+        
         # Add repository URL if specified
         if 'repo' in self.config:
             env_vars['REPO_URL'] = self.config['repo']
@@ -109,6 +125,32 @@ class PyDeployer:
         if 'env_vars' in self.config:
             for key, value in self.config['env_vars'].items():
                 env_vars[key] = str(value)
+        
+        # Handle database configuration section separately for database setup scripts
+        if 'database' in self.config:
+            db_config = self.config['database']
+            # These are specifically for database creation/verification scripts
+            # They override any env_vars with the same name for database operations
+            
+            # First, expand any template variables in database config
+            import re
+            def expand_vars(value, env_dict):
+                """Expand ${VAR} references in value using env_dict"""
+                if not isinstance(value, str):
+                    return value
+                pattern = r'\$\{([^}]+)\}'
+                def replacer(match):
+                    var_name = match.group(1)
+                    return env_dict.get(var_name, match.group(0))
+                return re.sub(pattern, replacer, value)
+            
+            # Expand database config values using env_vars
+            env_vars['DB_TYPE'] = db_config.get('type', 'postgresql')
+            env_vars['DB_NAME'] = expand_vars(db_config.get('name', ''), env_vars)
+            env_vars['DB_USER'] = expand_vars(db_config.get('user', ''), env_vars)
+            env_vars['DB_PASSWORD'] = expand_vars(db_config.get('password', ''), env_vars)
+            env_vars['DB_HOST'] = expand_vars(db_config.get('host', 'localhost'), env_vars)
+            env_vars['DB_PORT'] = expand_vars(str(db_config.get('port', 5432)), env_vars)
         
         # Add supervisor-specific variables
         env_vars['CONFIG_OUTPUT_DIR'] = str(self.config_path / "supervisor")
@@ -220,10 +262,58 @@ class PyDeployer:
             logger.info(f"Copying repository from {current_dir} to {self.code_path}")
             shutil.copytree(current_dir, self.code_path, ignore=shutil.ignore_patterns('.git'))
             logger.info(f"✓ Repository copied to: {self.code_path}")
+            
+            # Patch configuration to use script-based unit tests
+            self._patch_deployment_config()
+            
+            # Reload configuration after patching
+            self._reload_config()
+            
             return True
         except Exception as e:
             logger.error(f"Failed to copy repository: {e}")
             return False
+
+    def _patch_deployment_config(self) -> None:
+        """Patch deployment configuration to use script-based unit tests"""
+        config_file = self.code_path / self.config_file.name
+        if not config_file.exists():
+            logger.warning(f"Configuration file not found for patching: {config_file}")
+            return
+        
+        try:
+            with open(config_file, 'r') as f:
+                content = f.read()
+            
+            # Replace the old python command with script-based approach
+            old_command = '- command: "python src/run_tests.py --health-check"'
+            new_command = '- script: "run-unit-tests.sh"'
+            
+            if old_command in content:
+                content = content.replace(old_command, new_command)
+                
+                with open(config_file, 'w') as f:
+                    f.write(content)
+                
+                logger.info("✓ Patched deployment configuration to use script-based unit tests")
+            else:
+                logger.debug("Configuration already uses script-based unit tests")
+                
+        except Exception as e:
+            logger.warning(f"Failed to patch deployment configuration: {e}")
+
+    def _reload_config(self) -> None:
+        """Reload configuration from the patched file"""
+        try:
+            config_file = self.code_path / self.config_file.name
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    self.config = yaml.safe_load(f)
+                logger.debug("✓ Configuration reloaded after patching")
+            else:
+                logger.warning("Configuration file not found for reloading")
+        except Exception as e:
+            logger.warning(f"Failed to reload configuration: {e}")
 
     def install_python_dependencies(self) -> bool:
         """Install Python dependencies using script"""

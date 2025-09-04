@@ -2,15 +2,19 @@
 # verify-postgresql-database.sh - PostgreSQL Database Verification and Creation Script
 # 
 # This script checks if a PostgreSQL database exists and creates it if needed.
-# Uses environment variables for configuration.
+# Uses root credentials from configuration for database creation and application
+# credentials for runtime access.
 #
 # Required Environment Variables:
 #   DB_HOST     - PostgreSQL host (default: localhost)
 #   DB_PORT     - PostgreSQL port (default: 5432)
 #   DB_NAME     - Database name to verify/create
-#   DB_USER     - Database user to create/use
-#   DB_PASSWORD - Database user password
-#   POSTGRES_USER - PostgreSQL superuser (default: postgres)
+#   DB_USER     - Database user to create/use (application user)
+#   DB_PASSWORD - Database user password (application password)
+#
+# Optional Environment Variables:
+#   DB_SERVERS_CONFIG - Path to database servers configuration file
+#   POSTGRES_USER - PostgreSQL superuser (will be loaded from config if not set)
 
 set -e  # Exit on any error
 
@@ -18,39 +22,41 @@ set -e  # Exit on any error
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
 
-# Try to detect the correct PostgreSQL superuser
-# On Ubuntu, it's often the current system user (e.g., ubuntu)
-# On other systems, it's typically 'postgres'
-if [[ -z "${POSTGRES_USER}" ]]; then
-    # First try with current user
-    if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "$USER" -c "SELECT 1;" >/dev/null 2>&1; then
-        POSTGRES_USER="$USER"
-    # Then try with postgres
-    elif psql -h "${DB_HOST}" -p "${DB_PORT}" -U "postgres" -c "SELECT 1;" >/dev/null 2>&1; then
-        POSTGRES_USER="postgres"
-    else
-        # Default to current user
-        POSTGRES_USER="$USER"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common logging utilities
+source "$(dirname "$0")/logging-utils.sh"
+
+# Load root credentials from configuration
+load_root_credentials() {
+    log_info "Loading database root credentials from configuration..."
+    
+    # Check if manage-database-credentials.py exists
+    if [[ ! -f "${SCRIPT_DIR}/manage-database-credentials.py" ]]; then
+        log_error "manage-database-credentials.py not found in ${SCRIPT_DIR}"
+        exit 1
     fi
-fi
-
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    
+    # Load root credentials using the credentials manager
+    local credentials_output
+    if ! credentials_output=$(DB_HOST="${DB_HOST}" python3 "${SCRIPT_DIR}/manage-database-credentials.py" 2>/dev/null); then
+        log_error "Failed to load root credentials from configuration"
+        exit 1
+    fi
+    
+    # Source the exported variables
+    eval "${credentials_output}"
+    
+    # Use root credentials for administrative operations
+    if [[ -n "${DB_ROOT_USER}" ]]; then
+        POSTGRES_USER="${DB_ROOT_USER}"
+        POSTGRES_PASSWORD="${DB_ROOT_PASSWORD}"
+        log_info "Using root user '${POSTGRES_USER}' from configuration"
+    else
+        log_error "Failed to load root credentials from configuration"
+        exit 1
+    fi
 }
 
 # Check required environment variables
@@ -88,13 +94,17 @@ check_postgresql_connection() {
     fi
     
     log_info "PostgreSQL service is running and accessible"
-    log_info "Using PostgreSQL superuser: ${POSTGRES_USER}"
+    
+    # Load root credentials after confirming PostgreSQL is accessible
+    load_root_credentials
 }
 
 # Check if database exists
 database_exists() {
     local db_exists
+    export PGPASSWORD="${POSTGRES_PASSWORD}"
     db_exists=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null || echo "0")
+    unset PGPASSWORD
     
     if [[ "${db_exists}" == "1" ]]; then
         return 0  # Database exists
@@ -106,7 +116,9 @@ database_exists() {
 # Check if user exists
 user_exists() {
     local user_exists
+    export PGPASSWORD="${POSTGRES_PASSWORD}"
     user_exists=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null || echo "0")
+    unset PGPASSWORD
     
     if [[ "${user_exists}" == "1" ]]; then
         return 0  # User exists
@@ -122,12 +134,15 @@ create_database_user() {
     if user_exists; then
         log_warn "Database user '${DB_USER}' already exists"
     else
+        export PGPASSWORD="${POSTGRES_PASSWORD}"
         if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -c "CREATE USER \"${DB_USER}\" WITH PASSWORD '${DB_PASSWORD}';" >/dev/null 2>&1; then
             log_info "Database user '${DB_USER}' created successfully"
         else
             log_error "Failed to create database user '${DB_USER}'"
+            unset PGPASSWORD
             exit 1
         fi
+        unset PGPASSWORD
     fi
 }
 
@@ -135,17 +150,22 @@ create_database_user() {
 create_database() {
     log_info "Creating database: ${DB_NAME}"
     
+    export PGPASSWORD="${POSTGRES_PASSWORD}"
     if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -c "CREATE DATABASE \"${DB_NAME}\" OWNER \"${DB_USER}\";" >/dev/null 2>&1; then
         log_info "Database '${DB_NAME}' created successfully"
     else
         log_error "Failed to create database '${DB_NAME}'"
+        unset PGPASSWORD
         exit 1
     fi
+    unset PGPASSWORD
 }
 
 # Grant necessary privileges
 grant_privileges() {
     log_info "Granting privileges to user '${DB_USER}' on database '${DB_NAME}'"
+    
+    export PGPASSWORD="${POSTGRES_PASSWORD}"
     
     # Grant all privileges on database
     if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -c "GRANT ALL PRIVILEGES ON DATABASE \"${DB_NAME}\" TO \"${DB_USER}\";" >/dev/null 2>&1; then
@@ -186,6 +206,8 @@ grant_privileges() {
     else
         log_warn "Could not transfer ownership (this is okay if not needed)"
     fi
+    
+    unset PGPASSWORD
 }
 
 # Test database connection with created user
@@ -211,22 +233,14 @@ ensure_superuser_permissions() {
     log_info "Ensuring PostgreSQL superuser has necessary permissions..."
     
     # Check if we can create roles
+    export PGPASSWORD="${POSTGRES_PASSWORD}"
     local can_create_role=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -tAc "SELECT rolcreaterole FROM pg_roles WHERE rolname='${POSTGRES_USER}';" 2>/dev/null || echo "f")
     local can_create_db=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${POSTGRES_USER}" -tAc "SELECT rolcreatedb FROM pg_roles WHERE rolname='${POSTGRES_USER}';" 2>/dev/null || echo "f")
+    unset PGPASSWORD
     
     if [[ "${can_create_role}" != "t" ]] || [[ "${can_create_db}" != "t" ]]; then
         log_warn "PostgreSQL user '${POSTGRES_USER}' lacks necessary permissions"
-        
-        # Try to grant permissions using sudo if available
-        if command -v sudo >/dev/null 2>&1; then
-            log_info "Attempting to grant permissions using sudo..."
-            if sudo -u postgres psql -c "ALTER USER ${POSTGRES_USER} CREATEROLE CREATEDB;" >/dev/null 2>&1; then
-                log_info "Permissions granted successfully"
-            else
-                log_warn "Could not grant permissions automatically"
-                log_warn "You may need to run: sudo -u postgres psql -c \"ALTER USER ${POSTGRES_USER} CREATEROLE CREATEDB;\""
-            fi
-        fi
+        log_warn "Please ensure the root user has CREATEROLE and CREATEDB permissions"
     else
         log_info "PostgreSQL user '${POSTGRES_USER}' has necessary permissions"
     fi

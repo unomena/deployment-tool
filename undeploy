@@ -1,0 +1,170 @@
+#!/bin/bash
+# undeploy - Remove Django deployments safely
+# 
+# Usage: ./undeploy <project> <environment> [branch]
+#
+# Parameters:
+#   project      - Project name (e.g., sampleapp, uno-admin)
+#   environment  - Environment name (dev, stage, qa, prod)
+#   branch       - Branch name (optional, defaults to main)
+#
+# Examples:
+#   ./undeploy sampleapp dev
+#   ./undeploy uno-admin dev integration
+#   ./undeploy myapp stage feature-branch
+
+set -e  # Exit on any error
+
+# Source common logging utilities
+source "$(dirname "$0")/scripts/logging-utils.sh"
+
+# Show usage information
+show_usage() {
+    cat << EOF
+Usage: ./undeploy <project> <environment> [branch]
+
+PARAMETERS:
+    project       Project name (e.g., sampleapp, uno-admin)
+    environment   Environment name (dev, stage, qa, prod)
+    branch        Branch name (optional, defaults to main)
+
+ENVIRONMENTS:
+    dev      - Development environment
+    stage    - Staging environment  
+    qa       - QA environment
+    prod     - Production environment (protected)
+
+EXAMPLES:
+    # Remove development deployment
+    ./undeploy sampleapp dev
+    
+    # Remove specific branch deployment
+    ./undeploy uno-admin dev integration
+    
+    # Remove staging deployment
+    ./undeploy myapp stage
+
+SAFETY FEATURES:
+    - Interactive confirmation required
+    - Automatic backup creation before deletion
+    - Production environments are protected
+    - Complete service and database cleanup
+    - Detailed logging of all operations
+
+NOTES:
+    - Backups are stored in /srv/deployment-backups/
+    - Production environments (prod, production, live) cannot be removed
+    - Requires sudo privileges for system operations
+
+EOF
+}
+
+# Validate parameters
+validate_parameters() {
+    if [[ $# -lt 2 ]]; then
+        log_error "Missing required parameters"
+        show_usage
+        exit 1
+    fi
+    
+    PROJECT="$1"
+    ENVIRONMENT="$2"
+    BRANCH="${3:-main}"
+    
+    # Validate project name
+    if [[ ! "$PROJECT" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        log_error "Invalid project name '$PROJECT'. Use only letters, numbers, hyphens, and underscores."
+        exit 1
+    fi
+    
+    # Validate environment name
+    if [[ ! "$ENVIRONMENT" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        log_error "Invalid environment name '$ENVIRONMENT'. Use only letters, numbers, hyphens, and underscores."
+        exit 1
+    fi
+    
+    # Validate branch name
+    if [[ ! "$BRANCH" =~ ^[a-zA-Z0-9_/-]+$ ]]; then
+        log_error "Invalid branch name '$BRANCH'. Use only letters, numbers, hyphens, underscores, and forward slashes."
+        exit 1
+    fi
+    
+    log_info "Project: $PROJECT"
+    log_info "Environment: $ENVIRONMENT"
+    log_info "Branch: $BRANCH"
+}
+
+# Check if deployment exists
+check_deployment_exists() {
+    local deployment_path="/srv/deployments/$PROJECT/$ENVIRONMENT/$BRANCH"
+    
+    if [[ ! -d "$deployment_path" ]]; then
+        log_error "Deployment not found: $PROJECT/$ENVIRONMENT/$BRANCH"
+        log_error "Path does not exist: $deployment_path"
+        log_info "Use './status' to see available deployments"
+        exit 1
+    fi
+    
+    log_info "Found deployment: $deployment_path"
+    echo "$deployment_path"
+}
+
+# Main execution function
+main() {
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local cleanup_script="$script_dir/scripts/cleanup-deployments.sh"
+    
+    # Create undeploy log with timestamp
+    local log_timestamp=$(date +%Y%m%d%H%M%S)
+    local log_file="$script_dir/logs/undeploy-${log_timestamp}.log"
+    
+    # Ensure logs directory exists
+    mkdir -p "$script_dir/logs"
+    
+    # Validate input parameters
+    validate_parameters "$@"
+    
+    # Create undeploy header in log
+    {
+        echo "[UNDEPLOY] $PROJECT $ENVIRONMENT $BRANCH"
+        echo "========================================"
+        echo ""
+    } | tee "$log_file"
+    
+    log_step "Starting deployment removal process" | tee -a "$log_file"
+    
+    # Verify cleanup script exists
+    if [[ ! -f "$cleanup_script" ]]; then
+        log_error "Cleanup script not found: $cleanup_script" | tee -a "$log_file"
+        exit 1
+    fi
+    
+    # Check if deployment exists
+    local deployment_path
+    deployment_path=$(check_deployment_exists 2>&1 | tee -a "$log_file" | tail -1)
+    
+    # Run the cleanup script
+    log_step "Executing cleanup script" | tee -a "$log_file"
+    
+    if "$cleanup_script" "$PROJECT" "$ENVIRONMENT" 2>&1 | tee -a "$log_file"; then
+        log_success "🎉 Deployment removed successfully!" | tee -a "$log_file"
+        log_info "📋 Full undeploy log: $log_file"
+        log_info "💾 Backup location: /srv/deployment-backups/"
+        exit 0
+    else
+        log_error "Undeployment failed" | tee -a "$log_file"
+        log_error "📋 Full undeploy log: $log_file"
+        exit 1
+    fi
+}
+
+# Handle command line arguments
+case "${1:-}" in
+    -h|--help|help|"")
+        show_usage
+        exit 0
+        ;;
+    *)
+        main "$@"
+        ;;
+esac

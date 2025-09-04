@@ -15,28 +15,16 @@
 
 set -e  # Exit on any error
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common logging utilities
+source "$(dirname "$0")/scripts/logging-utils.sh"
 
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
+# Additional logging function for deployment steps
 log_step() {
-    echo -e "${BLUE}[STEP]${NC} $1"
+    if [[ -t 1 ]]; then
+        echo -e "${BLUE}[STEP]${NC} $1"
+    else
+        echo "[STEP] $1"
+    fi
 }
 
 # Show usage information
@@ -178,36 +166,52 @@ main() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local deployer_script="$script_dir/scripts/deploy.py"
     
-    log_step "Starting Django deployment automation"
+    # Create deployment log with timestamp naming convention (YYYYMMDDHHMMSS.log)
+    local log_timestamp=$(date +%Y%m%d%H%M%S)
+    local log_file="$script_dir/logs/${log_timestamp}.log"
     
-    # Validate input parameters
+    # Ensure logs directory exists
+    mkdir -p "$script_dir/logs"
+    
+    # Validate input parameters first
     validate_parameters "$@"
+    
+    # Create deployment header in log
+    {
+        echo "[DEPLOY] $REPO_URL $BRANCH_OR_SHA $ENVIRONMENT"
+        echo "========================================"
+        echo ""
+    } | tee "$log_file"
+    
+    log_step "Starting Django deployment automation" | tee -a "$log_file"
     
     # Verify deployer script exists
     if [[ ! -f "$deployer_script" ]]; then
-        log_error "Deployer script not found: $deployer_script"
+        log_error "Deployer script not found: $deployer_script" | tee -a "$log_file"
         exit 1
     fi
     
     # Clone repository and checkout branch/SHA
     local temp_repo_dir
-    temp_repo_dir=$(clone_and_checkout "$REPO_URL" "$BRANCH_OR_SHA")
+    temp_repo_dir=$(clone_and_checkout "$REPO_URL" "$BRANCH_OR_SHA" 2>&1 | tee -a "$log_file" | tail -1)
     
     # Ensure cleanup happens on exit
     trap "cleanup_temp_dir '$temp_repo_dir'" EXIT
     
     # Run the Python deployer with the config from the cloned repository
-    log_step "Starting deployment with Python orchestrator"
+    log_step "Starting deployment with Python orchestrator" | tee -a "$log_file"
     cd "$temp_repo_dir"
     
     if python3 "$deployer_script" \
         --config "$CONFIG_FILE" \
         --branch "$BRANCH_OR_SHA" \
-        --verbose; then
-        log_info "🎉 Deployment completed successfully!"
+        --verbose 2>&1 | tee -a "$log_file"; then
+        log_info "🎉 Deployment completed successfully!" | tee -a "$log_file"
+        log_info "📋 Full deployment log: $log_file"
         exit 0
     else
-        log_error "Deployment failed"
+        log_error "Deployment failed" | tee -a "$log_file"
+        log_error "📋 Full deployment log: $log_file"
         exit 1
     fi
 }

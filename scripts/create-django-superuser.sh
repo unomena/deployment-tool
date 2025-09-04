@@ -19,31 +19,15 @@ set -e  # Exit on any error
 # Default values - PROJECT_PYTHON_PATH is required and set by deployment orchestrator
 DJANGO_PROJECT_DIR="${DJANGO_PROJECT_DIR:-.}"
 
+# Source common logging utilities
+source "$(dirname "$0")/logging-utils.sh"
+
 # Validate PROJECT_PYTHON_PATH is provided
 if [[ -z "${PROJECT_PYTHON_PATH}" ]]; then
-    echo -e "\033[0;31m[ERROR]\033[0m PROJECT_PYTHON_PATH is required but not set"
-    echo -e "\033[0;31m[ERROR]\033[0m This should be set by the deployment orchestrator"
+    log_error "PROJECT_PYTHON_PATH is required but not set"
+    log_error "This should be set by the deployment orchestrator"
     exit 1
 fi
-
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
 
 # Check required environment variables
 check_required_vars() {
@@ -106,6 +90,9 @@ except ImportError:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Add src directory to Python path for Django imports
+    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    
     if ! ${PROJECT_PYTHON_PATH} -c "${django_check_script}"; then
         log_error "Django is not available"
         exit 1
@@ -139,6 +126,10 @@ except Exception as e:
 '
     
     cd "${DJANGO_PROJECT_DIR}"
+    
+    # Add src directory to Python path for Django imports
+    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    cd "${DJANGO_PROJECT_DIR}/src"
     
     local result
     result=$(${PROJECT_PYTHON_PATH} -c "${user_check_script}")
@@ -195,6 +186,10 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Add src directory to Python path for Django imports
+    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    cd "${DJANGO_PROJECT_DIR}/src"
+    
     if ! ${PROJECT_PYTHON_PATH} -c "${superuser_creation_script}"; then
         log_error "Failed to create superuser"
         exit 1
@@ -248,6 +243,10 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Add src directory to Python path for Django imports
+    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    cd "${DJANGO_PROJECT_DIR}/src"
+    
     if ! ${PROJECT_PYTHON_PATH} -c "${verification_script}"; then
         log_error "Superuser verification failed"
         exit 1
@@ -290,6 +289,10 @@ except Exception as e:
 '
     
     cd "${DJANGO_PROJECT_DIR}"
+    
+    # Add src directory to Python path for Django imports
+    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    cd "${DJANGO_PROJECT_DIR}/src"
     
     if ! ${PROJECT_PYTHON_PATH} -c "${auth_test_script}"; then
         log_error "Superuser authentication test failed"
