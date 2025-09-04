@@ -74,6 +74,33 @@ class SupervisorConfigGenerator:
             logger.error(f"Failed to parse CONFIG_DATA JSON: {e}")
             sys.exit(1)
 
+    def _find_available_port(self, preferred_port: int) -> int:
+        """Find available port starting from preferred port"""
+        import subprocess
+        import sys
+        
+        try:
+            # Use the find-available-port.py script
+            script_path = Path(__file__).parent / "find-available-port.py"
+            result = subprocess.run(
+                [sys.executable, str(script_path), str(preferred_port)],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            available_port = int(result.stdout.strip())
+            
+            if available_port != preferred_port:
+                logger.info(f"Port {preferred_port} unavailable, using port {available_port}")
+            else:
+                logger.info(f"Using preferred port {preferred_port}")
+                
+            return available_port
+            
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.warning(f"Failed to find available port, falling back to {preferred_port}: {e}")
+            return preferred_port
+
     def _substitute_environment_variables(self, value: str, env_vars: Dict[str, str]) -> str:
         """Substitute environment variables in configuration values"""
         if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
@@ -129,10 +156,14 @@ class SupervisorConfigGenerator:
         if service.get('type') == 'gunicorn':
             # For gunicorn, use its own worker management instead of supervisor's
             workers = service.get('workers', 1)
-            port = service.get('port', 8000)
+            preferred_port = service.get('port', 8000)
+            
+            # Find available port starting from preferred port
+            available_port = self._find_available_port(preferred_port)
+            
             # Modify command to include workers and bind parameters
             if '--workers' not in command and '--bind' not in command:
-                full_command = f"{self.venv_path}/bin/{command} --workers {workers} --bind 0.0.0.0:{port}"
+                full_command = f"{self.venv_path}/bin/{command} --workers {workers} --bind 0.0.0.0:{available_port}"
             supervisor_numprocs = 1  # Only one supervisor process for gunicorn
         else:
             # For non-gunicorn services, use supervisor's process management
@@ -164,7 +195,7 @@ numprocs={supervisor_numprocs}"""
         if service.get('type') == 'gunicorn':
             # Add gunicorn-specific settings
             if 'port' in service:
-                config_content += f"\n# Gunicorn service on port {service['port']}"
+                config_content += f"\n# Gunicorn service on port {available_port} (preferred: {preferred_port})"
         elif service.get('type') == 'celery':
             # Add celery-specific settings
             config_content += f"\n# Celery {service_name} service"
