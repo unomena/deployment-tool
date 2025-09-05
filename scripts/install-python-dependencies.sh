@@ -12,6 +12,7 @@
 #   REQUIREMENTS_FILES      - JSON array or space-separated list of requirements files
 #   PROJECT_DIR            - Project directory containing requirements files (default: .)
 #   UPGRADE_PACKAGES       - Whether to upgrade packages during installation (default: false)
+#   INSTALL_BASIC_PACKAGES  - Whether to install basic Python packages (default: true)
 #   PIP_EXTRA_ARGS         - Additional arguments for pip install
 
 set -e  # Exit on any error
@@ -19,6 +20,7 @@ set -e  # Exit on any error
 # Default values
 PROJECT_DIR="${PROJECT_DIR:-.}"
 UPGRADE_PACKAGES="${UPGRADE_PACKAGES:-false}"
+INSTALL_BASIC_PACKAGES="${INSTALL_BASIC_PACKAGES:-true}"
 PIP_EXTRA_ARGS="${PIP_EXTRA_ARGS:-}"
 
 # Source common logging utilities
@@ -35,7 +37,7 @@ check_required_vars() {
     if [[ ${#missing_vars[@]} -gt 0 ]]; then
         log_error "Missing required environment variables: ${missing_vars[*]}"
         log_error "Required variables: VENV_PATH"
-        log_error "Optional variables: PYTHON_DEPENDENCIES, REQUIREMENTS_FILES, PROJECT_DIR (default: .), UPGRADE_PACKAGES (default: false)"
+        log_error "Optional variables: PYTHON_DEPENDENCIES, REQUIREMENTS_FILES, PROJECT_DIR (default: .), UPGRADE_PACKAGES (default: false), INSTALL_BASIC_PACKAGES (default: true)"
         exit 1
     fi
 }
@@ -117,6 +119,91 @@ parse_requirements_files() {
     
     if [[ ${#REQUIREMENTS_ARRAY[@]} -gt 0 ]]; then
         log_info "Found ${#REQUIREMENTS_ARRAY[@]} requirements files to install: ${REQUIREMENTS_ARRAY[*]}"
+    fi
+}
+
+# Install basic Python packages that are commonly needed
+install_basic_python_packages() {
+    local basic_packages=(
+        "setuptools"
+        "wheel" 
+        "pip"
+        "certifi"
+        "urllib3"
+        "requests"
+        "six"
+        "python-dateutil"
+        "pytz"
+        "packaging"
+    )
+    
+    # Optional packages that are very commonly used
+    local optional_packages=(
+        "pillow"
+        "lxml"
+        "pyyaml"
+        "python-dotenv"
+    )
+    
+    log_info "Installing basic Python packages..."
+    
+    # Build pip install command for basic packages
+    local pip_cmd="${PIP_CMD} install --upgrade"
+    
+    # Add extra arguments if specified
+    if [[ -n "${PIP_EXTRA_ARGS}" ]]; then
+        pip_cmd="${pip_cmd} ${PIP_EXTRA_ARGS}"
+    fi
+    
+    # Add basic packages
+    for package in "${basic_packages[@]}"; do
+        pip_cmd="${pip_cmd} ${package}"
+    done
+    
+    log_info "Installing core packages: ${basic_packages[*]}"
+    log_info "Running: ${pip_cmd}"
+    
+    if eval "${pip_cmd}"; then
+        log_info "✓ Basic Python packages installed successfully"
+        
+        # Verify basic package installation
+        local failed_basic=()
+        for package in "${basic_packages[@]}"; do
+            if ${PIP_CMD} show "${package}" >/dev/null 2>&1; then
+                log_info "✓ ${package} installed"
+            else
+                log_error "✗ ${package} installation failed"
+                failed_basic+=("${package}")
+            fi
+        done
+        
+        if [[ ${#failed_basic[@]} -gt 0 ]]; then
+            log_error "Some basic packages failed to install: ${failed_basic[*]}"
+            return 1
+        fi
+        
+        # Try to install optional packages (don't fail if these don't work)
+        log_info "Installing optional common packages..."
+        local optional_failures=()
+        
+        for package in "${optional_packages[@]}"; do
+            log_info "Attempting to install optional package: ${package}"
+            if ${PIP_CMD} install "${package}" >/dev/null 2>&1; then
+                log_info "✓ ${package} installed (optional)"
+            else
+                log_warn "⚠ ${package} installation failed (optional, continuing)"
+                optional_failures+=("${package}")
+            fi
+        done
+        
+        if [[ ${#optional_failures[@]} -gt 0 ]]; then
+            log_info "Optional packages that failed (non-critical): ${optional_failures[*]}"
+        fi
+        
+        return 0
+    else
+        log_error "Failed to install basic Python packages"
+        return 1
     fi
 }
 
@@ -302,17 +389,27 @@ main() {
     parse_python_dependencies
     parse_requirements_files
     
-    # Check if there's anything to install
+    # Install basic Python packages first (if enabled)
+    if [[ "${INSTALL_BASIC_PACKAGES}" == "true" ]]; then
+        if ! install_basic_python_packages; then
+            log_error "Failed to install basic Python packages"
+            return 1
+        fi
+    else
+        log_info "Skipping basic Python packages installation (INSTALL_BASIC_PACKAGES=false)"
+    fi
+    
+    # Check if there are additional packages to install
     if [[ ${#PYTHON_DEPS_ARRAY[@]} -eq 0 ]] && [[ ${#REQUIREMENTS_ARRAY[@]} -eq 0 ]]; then
-        log_info "No dependencies or requirements files specified"
+        log_info "No additional dependencies or requirements files specified"
         show_installed_packages
-        log_info "✓ Python dependencies installation completed (nothing to install)"
+        log_info "✓ Python dependencies installation completed (basic packages installed)"
         return 0
     fi
     
-    # Install Python packages
+    # Install additional Python packages
     if ! install_python_packages; then
-        log_error "Failed to install Python packages"
+        log_error "Failed to install additional Python packages"
         return 1
     fi
     
@@ -350,6 +447,9 @@ OPTIONAL ENVIRONMENT VARIABLES:
                        Examples: '["requirements.txt"]' or "requirements.txt dev-requirements.txt"
     PROJECT_DIR        Project directory containing requirements files (default: .)
     UPGRADE_PACKAGES   Whether to upgrade packages during installation (default: false)
+    INSTALL_BASIC_PACKAGES Whether to install basic Python packages (default: true)
+                       Basic packages: setuptools, wheel, pip, certifi, urllib3, requests, six, python-dateutil, pytz, packaging
+                       Optional packages: pillow, lxml, pyyaml, python-dotenv
     PIP_EXTRA_ARGS     Additional arguments for pip install
 
 USAGE:
@@ -374,7 +474,8 @@ OPERATIONS PERFORMED:
     ✓ Virtual environment verification
     ✓ Dependencies parsing
     ✓ Requirements files parsing
-    ✓ Python packages installation
+    ✓ Basic Python packages installation (if enabled)
+    ✓ Additional Python packages installation
     ✓ Requirements files installation
     ✓ Installation verification
     ✓ Security vulnerability check
