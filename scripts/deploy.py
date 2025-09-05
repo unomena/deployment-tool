@@ -389,12 +389,135 @@ class PyDeployer:
                 logger.error("Deployment validation failed")
                 return False
             
+            # Update deployment registry
+            if not self.update_deployment_registry():
+                logger.warning("Failed to update deployment registry (non-critical)")
+            
             logger.info("✓ Deployment completed successfully!")
             return True
             
         except Exception as e:
             logger.error(f"Deployment failed with exception: {e}")
             return False
+
+    def update_deployment_registry(self) -> bool:
+        """Update the deployment registry with current deployment information"""
+        try:
+            # Get git URL from the repository
+            git_url = self._get_git_url()
+            
+            # Get Python and Django versions
+            python_version = self._get_python_version()
+            django_version = self._get_django_version()
+            
+            # Create deployment data
+            deployment_data = {
+                "git_url": git_url,
+                "branch": self.branch,
+                "deployment_path": str(self.base_path),
+                "python_version": python_version,
+                "django_version": django_version,
+                "services": self._extract_services_info(),
+                "directories": {
+                    "code": str(self.code_path),
+                    "venv": str(self.venv_path),
+                    "logs": str(self.logs_path),
+                    "config": str(self.config_path)
+                },
+                "config_file": f"deploy-{self.environment}.yml"
+            }
+            
+            # Call the registry management script
+            registry_script = Path(__file__).parent / "manage-deployments-registry.py"
+            cmd = [
+                "python3", str(registry_script), "add",
+                "--project", self.project_name,
+                "--environment", self.environment,
+                "--data", json.dumps(deployment_data)
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info("✓ Deployment registry updated successfully")
+                return True
+            else:
+                logger.error(f"Failed to update deployment registry: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error updating deployment registry: {e}")
+            return False
+    
+    def _get_git_url(self) -> str:
+        """Get the git URL from the repository"""
+        try:
+            result = subprocess.run(
+                ["git", "config", "--get", "remote.origin.url"],
+                cwd=str(self.code_path),
+                capture_output=True,
+                text=True
+            )
+            return result.stdout.strip() if result.returncode == 0 else "unknown"
+        except:
+            return "unknown"
+    
+    def _get_python_version(self) -> str:
+        """Get Python version from virtual environment"""
+        try:
+            result = subprocess.run(
+                [str(self.venv_path / "bin" / "python"), "--version"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                return result.stdout.strip().replace("Python ", "")
+        except:
+            pass
+        return "unknown"
+    
+    def _get_django_version(self) -> str:
+        """Get Django version from virtual environment"""
+        try:
+            result = subprocess.run(
+                [str(self.venv_path / "bin" / "pip"), "show", "django"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if line.startswith('Version:'):
+                        return line.split(':', 1)[1].strip()
+        except:
+            pass
+        return "unknown"
+    
+    def _extract_services_info(self) -> List[Dict[str, Any]]:
+        """Extract services information from configuration"""
+        services = []
+        config_services = self.config.get('services', {})
+        
+        for service_name, service_config in config_services.items():
+            service_data = {
+                "name": f"{self.project_name}-{self.environment}-{service_name}",
+                "type": service_name,
+                "status": "UNKNOWN",
+                "command": service_config.get("command", "")
+            }
+            
+            # Extract port for web services
+            if service_name == "web" and "bind" in service_config.get("command", ""):
+                try:
+                    command = service_config["command"]
+                    if "--bind" in command:
+                        bind_part = command.split("--bind")[1].strip().split()[0]
+                        if ":" in bind_part:
+                            service_data["port"] = int(bind_part.split(":")[-1])
+                except (IndexError, ValueError):
+                    pass
+            
+            services.append(service_data)
+        
+        return services
 
     def run_hooks(self, hook_type: str) -> bool:
         """Execute deployment hooks"""

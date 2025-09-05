@@ -59,3 +59,11 @@ log_debug() {
         echo "[DEBUG] $1"
     fi
 }
+
+log_step() {
+    if [[ -t 1 ]]; then
+        echo -e "${BLUE}[STEP]${NC} $1"
+    else
+        echo "[STEP] $1"
+    fi
+}

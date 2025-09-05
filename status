@@ -1,5 +1,15 @@
 #!/bin/bash
 # status - Quick deployment status command
-# Simple wrapper around deployment-status.sh
+# Enhanced wrapper that uses registry-based status reporting
 
-exec "$(dirname "$0")/scripts/deployment-status.sh" "$@"
+# Check if deployments.yml exists, use registry-based reporter if available
+SCRIPT_DIR="$(dirname "$0")"
+REGISTRY_PATH="$SCRIPT_DIR/deployments.yml"
+
+if [[ -f "$REGISTRY_PATH" ]]; then
+    # Use the new registry-based status reporter
+    exec python3 "$SCRIPT_DIR/scripts/deployment-status-registry.py" "$@"
+else
+    # Fall back to the original directory-scanning approach
+    exec "$SCRIPT_DIR/scripts/deployment-status.sh" "$@"
+fi

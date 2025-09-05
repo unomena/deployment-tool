@@ -56,3 +56,4 @@ deployments/
 
 # Configuration files with sensitive data
 config.yml
+deployments.yml

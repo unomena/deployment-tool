@@ -147,6 +147,14 @@ main() {
     log_step "Executing cleanup script" | tee -a "$log_file"
     
     if "$cleanup_script" "$PROJECT" "$ENVIRONMENT" 2>&1 | tee -a "$log_file"; then
+        # Update deployment registry to remove the deployment
+        log_step "Updating deployment registry" | tee -a "$log_file"
+        if python3 "$script_dir/scripts/manage-deployments-registry.py" remove --project "$PROJECT" --environment "$ENVIRONMENT" 2>&1 | tee -a "$log_file"; then
+            log_info "✓ Deployment registry updated successfully" | tee -a "$log_file"
+        else
+            log_warn "⚠ Failed to update deployment registry (non-critical)" | tee -a "$log_file"
+        fi
+        
         log_success "🎉 Deployment removed successfully!" | tee -a "$log_file"
         log_info "📋 Full undeploy log: $log_file"
         log_info "💾 Backup location: /srv/deployment-backups/"
