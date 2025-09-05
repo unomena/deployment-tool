@@ -494,28 +494,41 @@ class PyDeployer:
     def _extract_services_info(self) -> List[Dict[str, Any]]:
         """Extract services information from configuration"""
         services = []
-        config_services = self.config.get('services', {})
+        config_services = self.config.get('services', [])
         
-        for service_name, service_config in config_services.items():
-            service_data = {
-                "name": f"{self.project_name}-{self.environment}-{service_name}",
-                "type": service_name,
-                "status": "UNKNOWN",
-                "command": service_config.get("command", "")
-            }
-            
-            # Extract port for web services
-            if service_name == "web" and "bind" in service_config.get("command", ""):
-                try:
-                    command = service_config["command"]
-                    if "--bind" in command:
-                        bind_part = command.split("--bind")[1].strip().split()[0]
-                        if ":" in bind_part:
-                            service_data["port"] = int(bind_part.split(":")[-1])
-                except (IndexError, ValueError):
-                    pass
-            
-            services.append(service_data)
+        # Handle both list and dict formats for backward compatibility
+        if isinstance(config_services, dict):
+            # Old format: services as dict
+            for service_name, service_config in config_services.items():
+                service_data = {
+                    "name": f"{self.project_name}-{self.environment}-{service_name}",
+                    "type": service_config.get("type", service_name),
+                    "status": "UNKNOWN",
+                    "command": service_config.get("command", "")
+                }
+                
+                # Add port if specified
+                if "port" in service_config:
+                    service_data["port"] = service_config["port"]
+                
+                services.append(service_data)
+        elif isinstance(config_services, list):
+            # New format: services as list
+            for service_config in config_services:
+                if isinstance(service_config, dict):
+                    service_name = service_config.get("name", "unknown")
+                    service_data = {
+                        "name": f"{self.project_name}-{self.environment}-{service_name}",
+                        "type": service_config.get("type", service_name),
+                        "status": "UNKNOWN",
+                        "command": service_config.get("command", "")
+                    }
+                    
+                    # Add port if specified
+                    if "port" in service_config:
+                        service_data["port"] = service_config["port"]
+                    
+                    services.append(service_data)
         
         return services
 

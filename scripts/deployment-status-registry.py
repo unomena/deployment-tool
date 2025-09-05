@@ -15,6 +15,30 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+# Color codes for terminal output
+class Colors:
+    RED = '\033[0;31m'
+    GREEN = '\033[0;32m'
+    YELLOW = '\033[1;33m'
+    BLUE = '\033[0;34m'
+    PURPLE = '\033[0;35m'
+    CYAN = '\033[0;36m'
+    WHITE = '\033[1;37m'
+    NC = '\033[0m'  # No Color
+    
+    @staticmethod
+    def colorize_status(status: str) -> str:
+        """Apply color coding to status based on state"""
+        status_upper = status.upper()
+        if status_upper == 'RUNNING':
+            return f"{Colors.GREEN}{status}{Colors.NC}"
+        elif status_upper in ['FAILED', 'FATAL', 'ERROR', 'STOPPED']:
+            return f"{Colors.RED}{status}{Colors.NC}"
+        elif status_upper in ['STARTING', 'STOPPING', 'RESTARTING', 'UNKNOWN']:
+            return f"{Colors.YELLOW}{status}{Colors.NC}"
+        else:
+            return status
+
 # Default registry path
 DEFAULT_REGISTRY_PATH = "/home/ubuntu/Workspace/deployment-tool/deployments.yml"
 
@@ -58,9 +82,11 @@ class DeploymentStatusReporter:
                             
                             # Extract PID if running
                             if status == "RUNNING" and len(parts) >= 4:
-                                pid_part = parts[3].rstrip(',')
-                                if pid_part.startswith('pid'):
-                                    pid = pid_part.split()[1] if ' ' in pid_part else pid_part[3:]
+                                # Look for "pid XXXXX," pattern
+                                for i, part in enumerate(parts[2:], 2):
+                                    if part == "pid" and i + 1 < len(parts):
+                                        pid = parts[i + 1].rstrip(',')
+                                        break
                             
                             services[service_name] = {
                                 "status": status,
@@ -243,13 +269,37 @@ class DeploymentStatusReporter:
                         service_pid = 'N/A'
                         
                         # Get live status from supervisor
+                        # Try exact match first, then try with group prefix
+                        sup_info = None
                         if service_name in supervisor_status:
                             sup_info = supervisor_status[service_name]
+                        else:
+                            # Try with group prefix (e.g., sampleapp-dev:sampleapp-dev-web)
+                            group_name = f"{project}-{env}"
+                            full_service_name = f"{group_name}:{service_name}"
+                            if full_service_name in supervisor_status:
+                                sup_info = supervisor_status[full_service_name]
+                            else:
+                                # For worker services, check for numbered variants (_00, _01, etc.)
+                                for sup_name in supervisor_status.keys():
+                                    if sup_name.startswith(f"{group_name}:{service_name}_"):
+                                        sup_info = supervisor_status[sup_name]
+                                        break
+                        
+                        if sup_info:
                             service_status = sup_info['status']
                             service_pid = sup_info['pid'] or 'N/A'
                         
+                        # Apply color coding to status with proper spacing
+                        colored_status = Colors.colorize_status(service_status)
+                        
+                        # Calculate padding needed after the colored status
+                        status_length = len(service_status)
+                        padding_needed = max(0, 10 - status_length)
+                        padding = " " * padding_needed
+                        
                         report_lines.append(
-                            f"{service_name:<20} {project:<15} {service_status:<10} {service_pid:<10}"
+                            f"{service_name:<20} {project:<15} {colored_status}{padding} {service_pid:<10}"
                         )
         
         if not any('RUNNING' in line for line in report_lines[-10:]):
