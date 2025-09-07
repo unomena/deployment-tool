@@ -57,3 +57,6 @@ deployments/
 # Configuration files with sensitive data
 config.yml
 deployments.yml
+
+# Projects
+/projects
