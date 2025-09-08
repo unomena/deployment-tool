@@ -71,6 +71,8 @@ make_migrations() {
     # Check if manage.py is in root or src directory and set up accordingly
     if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
+        # Add src directory to Python path so Django can find modules in src/
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
@@ -104,6 +106,8 @@ run_migrations() {
     # Check if manage.py is in root or src directory and set up accordingly
     if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
+        # Add src directory to Python path so Django can find modules in src/
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
@@ -139,6 +143,8 @@ collect_static() {
     # Check if manage.py is in root or src directory and set up accordingly
     if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
+        # Add src directory to Python path so Django can find modules in src/
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
@@ -167,6 +173,8 @@ verify_migrations() {
     # Check if manage.py is in root or src directory and set up accordingly
     if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
+        # Add src directory to Python path so Django can find modules in src/
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"

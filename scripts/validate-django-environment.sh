@@ -215,30 +215,19 @@ test_django_management() {
     cd "${DJANGO_PROJECT_DIR}"
     
     # Test manage.py access - check both root and src directory
-    if [[ -f "manage.py" ]]; then
-        log_info "Found manage.py in project root"
-        
-        # Test help command (should not fail)
-        if ! ${PROJECT_PYTHON_PATH} manage.py check --deploy 2>/dev/null; then
-            log_info "✓ Django management commands accessible from root"
-        else
-            log_warn "Django management commands may have issues from root"
-        fi
-    elif [[ -f "src/manage.py" ]]; then
-        log_info "Found manage.py in src directory"
-        
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
-        
-        # Test help command (should not fail)
-        if ! ${PROJECT_PYTHON_PATH} manage.py check --deploy 2>/dev/null; then
-            log_info "✓ Django management commands accessible from src"
-        else
-            log_warn "Django management commands may have issues from src"
-        fi
     else
-        log_warn "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
+    
+    # Test help command (should not fail)
+    if ! ${PROJECT_PYTHON_PATH} manage.py check --deploy 2>/dev/null; then
+        log_info "✓ Django management commands accessible"
+    else
+        log_warn "Django management commands may have issues"
     fi
 }
 
