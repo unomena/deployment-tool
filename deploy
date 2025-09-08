@@ -78,8 +78,8 @@ validate_parameters() {
     ENVIRONMENT="$3"
     
     # Validate repository URL format
-    if [[ ! "$REPO_URL" =~ ^(https://|git@|file://|/) ]]; then
-        log_error "Invalid repository URL format. Must start with 'https://', 'git@', 'file://', or be an absolute path"
+    if [[ ! "$REPO_URL" =~ ^(https://|git@|git://|file://|/) ]]; then
+        log_error "Invalid repository URL format. Must start with 'https://', 'git@', 'git://', 'file://', or be an absolute path"
         exit 1
     fi
     
