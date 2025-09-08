@@ -215,6 +215,13 @@ test_django_management() {
     cd "${DJANGO_PROJECT_DIR}"
     
     # Test manage.py access - check both root and src directory
+    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+        log_info "Using manage.py from project root"
+        # Add src directory to Python path so Django can find modules in src/
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}"
+    elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
+        log_info "Using manage.py from src directory"
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
