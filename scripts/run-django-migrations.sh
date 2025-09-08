@@ -68,9 +68,19 @@ make_migrations() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path and change to src directory where manage.py is located
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+        log_info "Using manage.py from project root"
+        cd "${DJANGO_PROJECT_DIR}"
+    elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
+        log_info "Using manage.py from src directory"
+        # Add src directory to Python path and change to src directory where manage.py is located
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     # Run makemigrations to create new migration files
     if ${PROJECT_PYTHON_PATH} manage.py makemigrations --dry-run --verbosity=0 | grep -q "No changes detected"; then
@@ -91,9 +101,19 @@ run_migrations() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path and change to src directory where manage.py is located
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+        log_info "Using manage.py from project root"
+        cd "${DJANGO_PROJECT_DIR}"
+    elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
+        log_info "Using manage.py from src directory"
+        # Add src directory to Python path and change to src directory where manage.py is located
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     # Show migration plan first
     log_info "Migration plan:"
@@ -116,9 +136,19 @@ collect_static() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path and change to src directory where manage.py is located
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+        log_info "Using manage.py from project root"
+        cd "${DJANGO_PROJECT_DIR}"
+    elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
+        log_info "Using manage.py from src directory"
+        # Add src directory to Python path and change to src directory where manage.py is located
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     # Collect static files (non-interactive)
     if ! ${PROJECT_PYTHON_PATH} manage.py collectstatic --noinput --clear; then
@@ -134,9 +164,19 @@ verify_migrations() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path and change to src directory where manage.py is located
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+        log_info "Using manage.py from project root"
+        cd "${DJANGO_PROJECT_DIR}"
+    elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
+        log_info "Using manage.py from src directory"
+        # Add src directory to Python path and change to src directory where manage.py is located
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     # Check for unapplied migrations
     local unapplied_migrations
