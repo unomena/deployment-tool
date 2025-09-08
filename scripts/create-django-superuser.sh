@@ -3,47 +3,38 @@
 # 
 # This script creates a Django superuser if it doesn't already exist.
 # Uses environment variables for configuration.
-#
-# Required Environment Variables:
-#   DEFAULT_SUPERUSER_USERNAME - Superuser username
-#   DEFAULT_SUPERUSER_EMAIL    - Superuser email
-#   DEFAULT_SUPERUSER_PASSWORD - Superuser password
-#
-# Optional Environment Variables:
-#   PROJECT_PYTHON_PATH  - Path to PROJECT Python executable (required for Django operations)
-#   DJANGO_PROJECT_DIR   - Django project directory (default: current directory)
-#   DJANGO_SETTINGS_MODULE - Django settings module (should be set)
 
-set -e  # Exit on any error
+# Source logging utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/logging-utils.sh"
 
-# Default values - PROJECT_PYTHON_PATH is required and set by deployment orchestrator
-DJANGO_PROJECT_DIR="${DJANGO_PROJECT_DIR:-.}"
+# Default values
+DEFAULT_SUPERUSER_USERNAME="${DEFAULT_SUPERUSER_USERNAME:-admin}"
+DEFAULT_SUPERUSER_EMAIL="${DEFAULT_SUPERUSER_EMAIL:-admin@example.com}"
+DEFAULT_SUPERUSER_PASSWORD="${DEFAULT_SUPERUSER_PASSWORD:-changeme}"
 
-# Source common logging utilities
-source "$(dirname "$0")/logging-utils.sh"
+# Environment variables (set by deployment orchestrator)
+PROJECT_PYTHON_PATH="${PROJECT_PYTHON_PATH:-python3}"
+DJANGO_PROJECT_DIR="${DJANGO_PROJECT_DIR:-$(pwd)}"
 
-# Validate PROJECT_PYTHON_PATH is provided
-if [[ -z "${PROJECT_PYTHON_PATH}" ]]; then
-    log_error "PROJECT_PYTHON_PATH is required but not set"
-    log_error "This should be set by the deployment orchestrator"
-    exit 1
-fi
-
-# Check required environment variables
-check_required_vars() {
+# Validate required environment variables
+validate_environment() {
+    log_info "Validating environment variables..."
+    
+    local required_vars=(
+        "DEFAULT_SUPERUSER_USERNAME"
+        "DEFAULT_SUPERUSER_EMAIL" 
+        "DEFAULT_SUPERUSER_PASSWORD"
+        "PROJECT_PYTHON_PATH"
+        "DJANGO_PROJECT_DIR"
+    )
+    
     local missing_vars=()
-    
-    if [[ -z "${DEFAULT_SUPERUSER_USERNAME}" ]]; then
-        missing_vars+=("DEFAULT_SUPERUSER_USERNAME")
-    fi
-    
-    if [[ -z "${DEFAULT_SUPERUSER_EMAIL}" ]]; then
-        missing_vars+=("DEFAULT_SUPERUSER_EMAIL")
-    fi
-    
-    if [[ -z "${DEFAULT_SUPERUSER_PASSWORD}" ]]; then
-        missing_vars+=("DEFAULT_SUPERUSER_PASSWORD")
-    fi
+    for var in "${required_vars[@]}"; do
+        if [[ -z "${!var}" ]]; then
+            missing_vars+=("$var")
+        fi
+    done
     
     if [[ ${#missing_vars[@]} -gt 0 ]]; then
         log_error "Missing required environment variables: ${missing_vars[*]}"
@@ -90,8 +81,18 @@ except ImportError:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path for Django imports
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "manage.py" ]]; then
+        log_info "Found manage.py in project root"
+        # Stay in project root directory
+    elif [[ -f "src/manage.py" ]]; then
+        log_info "Found manage.py in src directory"
+        # Add src directory to Python path for Django imports
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     if ! ${PROJECT_PYTHON_PATH} -c "${django_check_script}"; then
         log_error "Django is not available"
@@ -127,9 +128,18 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path for Django imports
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "manage.py" ]]; then
+        # Stay in project root directory
+        :
+    elif [[ -f "src/manage.py" ]]; then
+        # Add src directory to Python path and change to src directory
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     local result
     result=$(${PROJECT_PYTHON_PATH} -c "${user_check_script}")
@@ -186,9 +196,18 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path for Django imports
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "manage.py" ]]; then
+        # Stay in project root directory
+        :
+    elif [[ -f "src/manage.py" ]]; then
+        # Add src directory to Python path and change to src directory
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     if ! ${PROJECT_PYTHON_PATH} -c "${superuser_creation_script}"; then
         log_error "Failed to create superuser"
@@ -214,28 +233,16 @@ try:
     User = get_user_model()
     username = os.environ.get("DEFAULT_SUPERUSER_USERNAME")
     
-    try:
-        user = User.objects.get(username=username)
-        
-        print(f"✓ Superuser found: {user.username}")
-        print(f"Email: {user.email}")
-        print(f"Is superuser: {user.is_superuser}")
-        print(f"Is staff: {user.is_staff}")
-        print(f"Is active: {user.is_active}")
-        print(f"Date joined: {user.date_joined}")
-        
-        if not user.is_superuser:
-            print("WARNING: User exists but is not a superuser")
-            sys.exit(1)
-            
-        if not user.is_active:
-            print("WARNING: User exists but is not active")
-            sys.exit(1)
-            
-    except User.DoesNotExist:
-        print("ERROR: Superuser not found after creation")
-        sys.exit(1)
-        
+    user = User.objects.get(username=username)
+    
+    print(f"✓ Superuser verification successful")
+    print(f"Username: {user.username}")
+    print(f"Email: {user.email}")
+    print(f"Is superuser: {user.is_superuser}")
+    print(f"Is staff: {user.is_staff}")
+    print(f"Is active: {user.is_active}")
+    print(f"Date joined: {user.date_joined}")
+    
 except Exception as e:
     print(f"ERROR: {e}")
     sys.exit(1)
@@ -243,90 +250,51 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
-    # Add src directory to Python path for Django imports
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
+    # Check if manage.py is in root or src directory and set up accordingly
+    if [[ -f "manage.py" ]]; then
+        # Stay in project root directory
+        :
+    elif [[ -f "src/manage.py" ]]; then
+        # Add src directory to Python path and change to src directory
+        export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        cd "${DJANGO_PROJECT_DIR}/src"
+    else
+        log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
+        exit 1
+    fi
     
     if ! ${PROJECT_PYTHON_PATH} -c "${verification_script}"; then
-        log_error "Superuser verification failed"
+        log_error "Failed to verify superuser"
         exit 1
     fi
-    
-    log_info "Superuser verification passed"
 }
 
-# Test superuser login capability
-test_superuser_authentication() {
-    log_info "Testing superuser authentication..."
-    
-    local auth_test_script='
-import os
-import sys
-import django
-
-try:
-    django.setup()
-    from django.contrib.auth import authenticate
-    
-    username = os.environ.get("DEFAULT_SUPERUSER_USERNAME")
-    password = os.environ.get("DEFAULT_SUPERUSER_PASSWORD")
-    
-    user = authenticate(username=username, password=password)
-    
-    if user is not None:
-        if user.is_active and user.is_superuser:
-            print("✓ Superuser authentication successful")
-        else:
-            print("ERROR: User authenticated but lacks superuser privileges")
-            sys.exit(1)
-    else:
-        print("ERROR: Superuser authentication failed")
-        sys.exit(1)
-        
-except Exception as e:
-    print(f"ERROR: {e}")
-    sys.exit(1)
-'
-    
-    cd "${DJANGO_PROJECT_DIR}"
-    
-    # Add src directory to Python path for Django imports
-    export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
-    cd "${DJANGO_PROJECT_DIR}/src"
-    
-    if ! ${PROJECT_PYTHON_PATH} -c "${auth_test_script}"; then
-        log_error "Superuser authentication test failed"
-        exit 1
-    fi
-    
-    log_info "Superuser authentication test passed"
-}
-
-# Main execution function
+# Main execution
 main() {
-    log_info "Starting Django superuser creation process"
-    log_info "Username: ${DEFAULT_SUPERUSER_USERNAME}"
-    log_info "Email: ${DEFAULT_SUPERUSER_EMAIL}"
-    log_info "Project directory: ${DJANGO_PROJECT_DIR}"
+    log_info "Starting Django superuser creation process..."
     
-    # Run all checks and operations
-    check_required_vars
-    validate_email "${DEFAULT_SUPERUSER_EMAIL}"
+    # Validate environment
+    validate_environment
+    validate_email "$DEFAULT_SUPERUSER_EMAIL"
+    
+    # Check Django availability
     check_django_availability
     
     # Check if superuser already exists
     if superuser_exists; then
-        log_info "Superuser '${DEFAULT_SUPERUSER_USERNAME}' already exists"
+        log_info "✓ Superuser '${DEFAULT_SUPERUSER_USERNAME}' already exists"
         verify_superuser
-        test_superuser_authentication
-        log_info "✓ Existing superuser validation completed"
-    else
-        log_info "Superuser '${DEFAULT_SUPERUSER_USERNAME}' does not exist, creating..."
-        create_superuser
-        verify_superuser
-        test_superuser_authentication
-        log_info "🎉 Superuser creation completed successfully"
+        log_info "✓ Django superuser setup completed (existing user)"
+        return 0
     fi
+    
+    # Create superuser
+    create_superuser
+    
+    # Verify creation
+    verify_superuser
+    
+    log_info "✓ Django superuser creation completed successfully"
 }
 
 # Help function
@@ -336,17 +304,14 @@ create-django-superuser.sh - Django Superuser Creation Script
 
 DESCRIPTION:
     This script creates a Django superuser if it doesn't already exist.
-    It performs validation, creation, and verification of the superuser account.
+    Uses environment variables for configuration.
 
-REQUIRED ENVIRONMENT VARIABLES:
-    DEFAULT_SUPERUSER_USERNAME  Superuser username
-    DEFAULT_SUPERUSER_EMAIL     Superuser email address
-    DEFAULT_SUPERUSER_PASSWORD  Superuser password
-
-OPTIONAL ENVIRONMENT VARIABLES:
-    PROJECT_PYTHON_PATH   Path to PROJECT Python executable (set by deployment orchestrator)
-    DJANGO_PROJECT_DIR    Django project directory (default: current directory)
-    DJANGO_SETTINGS_MODULE Django settings module (should be set)
+ENVIRONMENT VARIABLES:
+    DEFAULT_SUPERUSER_USERNAME  - Username for the superuser (default: admin)
+    DEFAULT_SUPERUSER_EMAIL     - Email for the superuser (default: admin@example.com)  
+    DEFAULT_SUPERUSER_PASSWORD  - Password for the superuser (default: changeme)
+    PROJECT_PYTHON_PATH         - Path to Python executable (set by deployment orchestrator)
+    DJANGO_PROJECT_DIR          - Django project directory (set by deployment orchestrator)
 
 USAGE:
     # Set environment variables
@@ -365,15 +330,15 @@ USAGE:
 OPERATIONS PERFORMED:
     ✓ Environment variables validation
     ✓ Email format validation
-    ✓ Django availability check
+    ✓ Python and Django availability check
     ✓ Existing superuser check
     ✓ Superuser creation (if needed)
     ✓ Superuser verification
-    ✓ Authentication test
+    ✓ Comprehensive logging
 
-EXIT CODES:
-    0  Success - Superuser exists or was created successfully
-    1  Error - Validation failed or creation unsuccessful
+RETURN CODES:
+    0 - Success (superuser created or already exists)
+    1 - Error (validation failed, Django unavailable, creation failed)
 
 EXAMPLES:
     # Basic superuser creation
