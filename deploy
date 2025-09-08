@@ -160,7 +160,7 @@ validate_config_file() {
 import yaml
 import sys
 
-required_fields = ['project_name', 'repository', 'python_version', 'services']
+required_fields = ['name', 'repo', 'python_version', 'services']
 config = yaml.safe_load(open('$config_file'))
 
 missing_fields = []
