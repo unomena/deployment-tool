@@ -125,7 +125,13 @@ class SupervisorConfigGenerator:
         env_pairs = []
         
         # Skip problematic environment variables that are too large or internal
-        skip_vars = {'CONFIG_DATA', 'MAKEOVERRIDES', 'MAKEFLAGS', 'MFLAGS'}
+        skip_vars = {
+            'CONFIG_DATA', 'MAKEOVERRIDES', 'MAKEFLAGS', 'MFLAGS', 'MAKELEVEL',
+            'SYSTEM_DEPENDENCIES', 'REQUIREMENTS_FILES', 'SSH_CONNECTION', 
+            'SSH_CLIENT', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_SESSION_TYPE',
+            'XDG_SESSION_CLASS', 'XDG_SESSION_ID', 'XDG_RUNTIME_DIR',
+            'SHELL', 'PWD', 'OLDPWD', '_', 'SHLVL'
+        }
         
         for key, value in env_vars.items():
             # Skip internal/large variables
