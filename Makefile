@@ -24,7 +24,9 @@ NC := \033[0m # No Color
 .DEFAULT_GOAL := help
 
 # Phony targets
-.PHONY: help build install clean test lint format deploy deploy-branch venv-info check-config validate
+.PHONY: help build install clean test lint format deploy deploy-branch venv-info check-config validate \
+        list-db-permissions create-superuser run-migrations collect-static validate-django \
+        verify-database cleanup-deployments view-logs deployment-status undeploy docs docs-build docs-serve
 
 help: ## Display available commands with descriptions
 	@echo "$(GREEN)PyDeployer - Deployment Automation Tool$(NC)"
@@ -170,3 +172,88 @@ update-requirements: $(VENV_DIR) ## Update requirements.txt with new dependencie
 	@echo "  1. $(PIP_VENV) install <package-name>"
 	@echo "  2. make freeze"
 	@echo "  3. Update $(REQUIREMENTS) manually if needed"
+
+# Database and Django Management Commands
+list-db-permissions: ## List PostgreSQL databases and their user permissions
+	@echo "$(YELLOW)Listing database permissions...$(NC)"
+	@if [ -n "$(DB)" ]; then \
+		$(PYTHON) scripts/list-database-permissions.py $(DB); \
+	else \
+		$(PYTHON) scripts/list-database-permissions.py; \
+	fi
+
+create-superuser: ## Create Django superuser (requires PROJECT_DIR, optionally USERNAME, EMAIL, PASSWORD)
+	@echo "$(YELLOW)Creating Django superuser...$(NC)"
+	@if [ -z "$(PROJECT_DIR)" ]; then echo "$(RED)Error: PROJECT_DIR is required$(NC)"; exit 1; fi
+	@if [ -n "$(USERNAME)" ] && [ -n "$(EMAIL)" ] && [ -n "$(PASSWORD)" ]; then \
+		DJANGO_SUPERUSER_USERNAME=$(USERNAME) DJANGO_SUPERUSER_EMAIL=$(EMAIL) DJANGO_SUPERUSER_PASSWORD=$(PASSWORD) \
+		bash scripts/create-django-superuser.sh $(PROJECT_DIR); \
+	else \
+		bash scripts/create-django-superuser.sh $(PROJECT_DIR); \
+	fi
+
+run-migrations: ## Run Django database migrations (requires PROJECT_DIR)
+	@echo "$(YELLOW)Running Django migrations...$(NC)"
+	@if [ -z "$(PROJECT_DIR)" ]; then echo "$(RED)Error: PROJECT_DIR is required$(NC)"; exit 1; fi
+	bash scripts/run-django-migrations.sh $(PROJECT_DIR)
+
+collect-static: ## Collect Django static files (requires PROJECT_DIR)
+	@echo "$(YELLOW)Collecting Django static files...$(NC)"
+	@if [ -z "$(PROJECT_DIR)" ]; then echo "$(RED)Error: PROJECT_DIR is required$(NC)"; exit 1; fi
+	bash scripts/collect-django-static.sh $(PROJECT_DIR)
+
+validate-django: ## Validate Django environment (requires PROJECT_DIR)
+	@echo "$(YELLOW)Validating Django environment...$(NC)"
+	@if [ -z "$(PROJECT_DIR)" ]; then echo "$(RED)Error: PROJECT_DIR is required$(NC)"; exit 1; fi
+	bash scripts/validate-django-environment.sh $(PROJECT_DIR)
+
+verify-database: ## Verify PostgreSQL database connection and setup (requires PROJECT, ENV, BRANCH)
+	@echo "$(YELLOW)Verifying database setup...$(NC)"
+	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	bash scripts/verify-postgresql-database.sh $(PROJECT) $(ENV) $(BRANCH)
+
+# Deployment Management Commands
+cleanup-deployments: ## Clean up old deployments (optionally specify DAYS_OLD)
+	@echo "$(YELLOW)Cleaning up old deployments...$(NC)"
+	@if [ -n "$(DAYS_OLD)" ]; then \
+		bash scripts/cleanup-deployments.sh $(DAYS_OLD); \
+	else \
+		bash scripts/cleanup-deployments.sh; \
+	fi
+
+view-logs: ## View deployment logs (requires PROJECT, ENV, BRANCH, optionally SERVICE)
+	@echo "$(YELLOW)Viewing deployment logs...$(NC)"
+	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	@if [ -n "$(SERVICE)" ]; then \
+		bash scripts/view-logs.sh $(PROJECT) $(ENV) $(BRANCH) $(SERVICE); \
+	else \
+		bash scripts/view-logs.sh $(PROJECT) $(ENV) $(BRANCH); \
+	fi
+
+deployment-status: ## Check deployment status (requires PROJECT, ENV, BRANCH)
+	@echo "$(YELLOW)Checking deployment status...$(NC)"
+	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	bash scripts/deployment-status.sh $(PROJECT) $(ENV) $(BRANCH)
+
+undeploy: ## Remove a deployment (requires PROJECT, ENV, BRANCH)
+	@echo "$(YELLOW)Removing deployment...$(NC)"
+	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	./undeploy $(PROJECT) $(ENV) $(BRANCH)
+
+# Documentation Commands
+docs: ## Build and serve documentation locally
+	@$(MAKE) -C docs serve
+
+docs-build: ## Build documentation only
+	@$(MAKE) -C docs build
+
+docs-serve: ## Serve documentation (requires docs to be built first)
+	@$(MAKE) -C docs serve

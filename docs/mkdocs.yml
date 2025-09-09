@@ -1,0 +1,87 @@
+site_name: PyDeployer Documentation
+site_description: Comprehensive guide for PyDeployer - Django deployment automation tool
+site_author: PyDeployer Team
+site_url: https://pydeployer.example.com
+
+# Repository
+repo_name: PyDeployer
+repo_url: https://github.com/your-org/pydeployer
+
+# Docs directory
+docs_dir: docs-content
+
+# Configuration
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+# Plugins
+plugins:
+  - search
+  - mermaid2
+
+# Navigation
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - Deployment Basics: user-guide/deployment-basics.md
+    - Makefile Commands: user-guide/makefile-commands.md
+    - Database Management: user-guide/database-management.md
+    - Django Operations: user-guide/django-operations.md
+    - Monitoring & Logs: user-guide/monitoring-logs.md
+  - Examples:
+    - Sample App Deployment: examples/sample-app.md
+    - Production Deployment: examples/production.md
+    - Multi-Environment Setup: examples/multi-environment.md
+  - Reference:
+    - Configuration Schema: reference/configuration.md
+    - Script Reference: reference/scripts.md
+    - Troubleshooting: reference/troubleshooting.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Architecture: development/architecture.md
