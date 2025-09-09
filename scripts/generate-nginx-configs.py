@@ -79,9 +79,10 @@ server {{
     server_name {domain};
     
     # Security headers
-    add_header X-Frame-Options DENY;
-    add_header X-Content-Type-Options nosniff;
-    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     
     # Logging
     access_log /var/log/nginx/{domain}_access.log;
@@ -111,6 +112,7 @@ server {{
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
         
         # Timeouts
         proxy_connect_timeout 60s;
@@ -180,24 +182,10 @@ server {{
         config_content = f"""# Main nginx configuration for {self.project_name}-{self.normalized_branch}
 # Generated automatically - do not edit manually
 
-# Rate limiting
+# Rate limiting for this project
 limit_req_zone $binary_remote_addr zone={self.project_name}_{self.normalized_branch}:10m rate=10r/s;
 
-# Gzip compression
-gzip on;
-gzip_vary on;
-gzip_min_length 1024;
-gzip_types
-    text/plain
-    text/css
-    text/xml
-    text/javascript
-    application/javascript
-    application/xml+rss
-    application/json;
-
-# Security settings
-server_tokens off;
+# Note: Global gzip and security settings are configured in main nginx.conf
 """
         return config_content
 
