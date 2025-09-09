@@ -309,8 +309,8 @@ main() {
     cd "$temp_repo_dir"
     
     if python3 "$deployer_script" \
-        --config "$absolute_config_file" \
-        --branch "$BRANCH" \
+        "$absolute_config_file" \
+        "$BRANCH" \
         --verbose 2>&1 | tee -a "$log_file"; then
         log_info "🎉 Deployment completed successfully!" | tee -a "$log_file"
         log_info "📋 Full deployment log: $log_file"
