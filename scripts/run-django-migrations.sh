@@ -68,28 +68,47 @@ make_migrations() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+    elif [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
         # Add src directory to Python path so Django can find modules in src/
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
         # Add src directory to Python path and change to src directory where manage.py is located
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
     fi
     
     # Run makemigrations to create new migration files
-    if ${PROJECT_PYTHON_PATH} manage.py makemigrations --dry-run --verbosity=0 | grep -q "No changes detected"; then
+    if ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} makemigrations --dry-run --verbosity=0 | grep -q "No changes detected"; then
         log_info "No new migrations needed"
     else
         log_info "Creating new migration files..."
-        if ! ${PROJECT_PYTHON_PATH} manage.py makemigrations; then
+        if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} makemigrations; then
             log_error "Failed to create migrations"
             exit 1
         fi
@@ -103,17 +122,36 @@ run_migrations() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+    elif [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
         # Add src directory to Python path so Django can find modules in src/
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
         # Add src directory to Python path and change to src directory where manage.py is located
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
@@ -121,12 +159,12 @@ run_migrations() {
     
     # Show migration plan first
     log_info "Migration plan:"
-    if ! ${PROJECT_PYTHON_PATH} manage.py showmigrations --plan; then
+    if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} showmigrations --plan; then
         log_warn "Could not show migration plan (this is okay for new databases)"
     fi
     
     # Run migrations
-    if ! ${PROJECT_PYTHON_PATH} manage.py migrate; then
+    if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} migrate; then
         log_error "Database migrations failed"
         exit 1
     fi
@@ -140,24 +178,43 @@ collect_static() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+    elif [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
         # Add src directory to Python path so Django can find modules in src/
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
         # Add src directory to Python path and change to src directory where manage.py is located
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
     fi
     
     # Collect static files (non-interactive)
-    if ! ${PROJECT_PYTHON_PATH} manage.py collectstatic --noinput --clear; then
+    if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} collectstatic --noinput --clear; then
         log_warn "Static file collection failed (this may be okay if no static files are configured)"
     else
         log_info "Static files collected successfully"
@@ -170,17 +227,36 @@ verify_migrations() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+    elif [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
         # Add src directory to Python path so Django can find modules in src/
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
         # Add src directory to Python path and change to src directory where manage.py is located
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
@@ -188,11 +264,11 @@ verify_migrations() {
     
     # Check for unapplied migrations
     local unapplied_migrations
-    unapplied_migrations=$(${PROJECT_PYTHON_PATH} manage.py showmigrations --plan | grep -c "\\[ \\]" || true)
+    unapplied_migrations=$(${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} showmigrations --plan | grep -c "\\[ \\]" || true)
     
     if [[ "$unapplied_migrations" -gt 0 ]]; then
         log_error "There are $unapplied_migrations unapplied migrations"
-        ${PROJECT_PYTHON_PATH} manage.py showmigrations
+        ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} showmigrations
         exit 1
     fi
     

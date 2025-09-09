@@ -81,16 +81,35 @@ except ImportError:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "manage.py" ]]; then
+    elif [[ -f "manage.py" ]]; then
         log_info "Found manage.py in project root"
         # Add src directory to Python path so Django can find modules in src/
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "src/manage.py" ]]; then
         log_info "Found manage.py in src directory"
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in project root or src directory"
         exit 1
@@ -130,14 +149,32 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "manage.py" ]]; then
+    elif [[ -f "manage.py" ]]; then
         # Stay in project root directory
-        :
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "src/manage.py" ]]; then
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
@@ -198,20 +235,38 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "manage.py" ]]; then
+    elif [[ -f "manage.py" ]]; then
         # Stay in project root directory
-        :
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "src/manage.py" ]]; then
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
     fi
     
-    if ! ${PROJECT_PYTHON_PATH} -c "${superuser_creation_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} shell -c "${superuser_creation_script}"; then
         log_error "Failed to create superuser"
         exit 1
     fi
@@ -252,20 +307,38 @@ except Exception as e:
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Check if manage.py is in root or src directory and set up accordingly
-    if [[ -f "manage.py" ]]; then
+    elif [[ -f "manage.py" ]]; then
         # Stay in project root directory
-        :
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "src/manage.py" ]]; then
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
     fi
     
-    if ! ${PROJECT_PYTHON_PATH} -c "${verification_script}"; then
+    if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} shell -c "${verification_script}"; then
         log_error "Failed to verify superuser"
         exit 1
     fi

@@ -214,24 +214,43 @@ test_django_management() {
     
     cd "${DJANGO_PROJECT_DIR}"
     
+    # Check for custom DJANGO_MANAGE_MODULE path first
+    if [[ -n "${DJANGO_MANAGE_MODULE:-}" ]]; then
+        log_info "Using custom Django manage module: ${DJANGO_MANAGE_MODULE}"
+        # Extract directory from the manage module path
+        local manage_dir=$(dirname "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}")
+        local manage_file=$(basename "${DJANGO_MANAGE_MODULE}")
+        
+        if [[ -f "${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}" ]]; then
+            # Add src directory to Python path so Django can find modules
+            export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
+            cd "${manage_dir}"
+            # Override manage.py command to use the custom path
+            MANAGE_PY_CMD="${manage_file}"
+        else
+            log_error "Custom manage module not found: ${DJANGO_PROJECT_DIR}${DJANGO_MANAGE_MODULE}"
+            exit 1
+        fi
     # Test manage.py access - check both root and src directory
-    if [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
+    elif [[ -f "${DJANGO_PROJECT_DIR}/manage.py" ]]; then
         log_info "Using manage.py from project root"
         # Add src directory to Python path so Django can find modules in src/
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}"
+        MANAGE_PY_CMD="manage.py"
     elif [[ -f "${DJANGO_PROJECT_DIR}/src/manage.py" ]]; then
         log_info "Using manage.py from src directory"
         # Add src directory to Python path and change to src directory
         export PYTHONPATH="${DJANGO_PROJECT_DIR}/src:${PYTHONPATH}"
         cd "${DJANGO_PROJECT_DIR}/src"
+        MANAGE_PY_CMD="manage.py"
     else
         log_error "manage.py not found in ${DJANGO_PROJECT_DIR} or ${DJANGO_PROJECT_DIR}/src"
         exit 1
     fi
     
     # Test help command (should not fail)
-    if ! ${PROJECT_PYTHON_PATH} manage.py check --deploy 2>/dev/null; then
+    if ! ${PROJECT_PYTHON_PATH} ${MANAGE_PY_CMD} check --deploy 2>/dev/null; then
         log_info "✓ Django management commands accessible"
     else
         log_warn "Django management commands may have issues"
