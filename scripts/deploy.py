@@ -53,8 +53,12 @@ class PyDeployer:
 
     def _load_config(self) -> Dict[str, Any]:
         """Load and validate configuration file"""
+        logger.info(f"Loading config from: {self.config_file}")
         if not self.config_file.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_file}")
+        
+        if self.config_file.is_dir():
+            raise IsADirectoryError(f"Config path is a directory, not a file: {self.config_file}")
         
         with open(self.config_file, 'r') as f:
             config = yaml.safe_load(f)
