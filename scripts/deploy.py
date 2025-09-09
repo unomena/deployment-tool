@@ -345,6 +345,28 @@ class PyDeployer:
         
         return self._run_script("install-supervisor-configs.sh", "Installing Supervisor configurations")
 
+    def generate_nginx_configs(self) -> bool:
+        """Generate Nginx configurations using script"""
+        services = self.config.get('services', [])
+        web_services = [s for s in services if s.get('type') in ['gunicorn', 'django', 'flask', 'fastapi'] or 'port' in s]
+        
+        if not web_services:
+            logger.info("No web services defined, skipping Nginx config generation")
+            return True
+        
+        return self._run_script("generate-nginx-configs.py", "Generating Nginx configurations")
+
+    def install_nginx_configs(self) -> bool:
+        """Install Nginx configurations using script"""
+        services = self.config.get('services', [])
+        web_services = [s for s in services if s.get('type') in ['gunicorn', 'django', 'flask', 'fastapi'] or 'port' in s]
+        
+        if not web_services:
+            logger.info("No web services defined, skipping Nginx config installation")
+            return True
+        
+        return self._run_script("install-nginx-configs.sh", "Installing Nginx configurations")
+
     def validate_deployment(self) -> bool:
         """Validate deployment using script"""
         return self._run_script("validate-deployment.sh", "Validating deployment")
@@ -367,6 +389,8 @@ class PyDeployer:
         service_steps = [
             (self.generate_supervisor_configs, "Supervisor config generation"),
             (self.install_supervisor_configs, "Supervisor config installation"),
+            (self.generate_nginx_configs, "Nginx config generation"),
+            (self.install_nginx_configs, "Nginx config installation"),
         ]
         
         try:

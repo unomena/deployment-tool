@@ -21,6 +21,8 @@ set -e  # Exit on any error
 # Configuration
 DEPLOYMENT_BASE_DIR="/srv/deployments"
 SUPERVISOR_CONF_DIR="/etc/supervisor/conf.d"
+NGINX_SITES_AVAILABLE="/etc/nginx/sites-available"
+NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
 BACKUP_DIR="/srv/deployment-backups"
 LOG_FILE="/var/log/deployment-cleanup.log"
 
@@ -214,6 +216,91 @@ remove_supervisor_configs() {
     fi
 }
 
+# Remove Nginx configurations
+remove_nginx_configs() {
+    local project_name="$1"
+    
+    if ! command -v nginx >/dev/null 2>&1; then
+        log_warn "Nginx not installed, skipping nginx config removal"
+        return 0
+    fi
+    
+    log_info "Removing Nginx configurations for project: $project_name"
+    
+    # Find nginx config files for this project
+    local nginx_configs=()
+    local removed_sites=()
+    
+    # Look for configs in sites-enabled that match the project pattern
+    if [[ -d "$NGINX_SITES_ENABLED" ]]; then
+        while IFS= read -r -d '' config_file; do
+            local config_name=$(basename "$config_file")
+            # Check if config file contains references to this project
+            if grep -q "$project_name" "$config_file" 2>/dev/null; then
+                nginx_configs+=("$config_name")
+            fi
+        done < <(find "$NGINX_SITES_ENABLED" -name "*.conf" -type f -print0 2>/dev/null || true)
+    fi
+    
+    # Also check sites-available for project-specific configs
+    if [[ -d "$NGINX_SITES_AVAILABLE" ]]; then
+        while IFS= read -r -d '' config_file; do
+            local config_name=$(basename "$config_file")
+            # Check if config file contains references to this project
+            if grep -q "$project_name" "$config_file" 2>/dev/null; then
+                if [[ ! " ${nginx_configs[@]} " =~ " ${config_name} " ]]; then
+                    nginx_configs+=("$config_name")
+                fi
+            fi
+        done < <(find "$NGINX_SITES_AVAILABLE" -name "*.conf" -type f -print0 2>/dev/null || true)
+    fi
+    
+    if [[ ${#nginx_configs[@]} -gt 0 ]]; then
+        log_info "Found ${#nginx_configs[@]} nginx configuration(s) for project: $project_name"
+        
+        for config_name in "${nginx_configs[@]}"; do
+            local site_name="${config_name%.conf}"
+            
+            # Remove from sites-enabled
+            if [[ -L "$NGINX_SITES_ENABLED/$config_name" ]]; then
+                log_info "Disabling nginx site: $site_name"
+                sudo rm -f "$NGINX_SITES_ENABLED/$config_name"
+                removed_sites+=("$site_name")
+            fi
+            
+            # Remove from sites-available
+            if [[ -f "$NGINX_SITES_AVAILABLE/$config_name" ]]; then
+                log_info "Removing nginx config: $config_name"
+                sudo rm -f "$NGINX_SITES_AVAILABLE/$config_name"
+            fi
+        done
+        
+        # Remove domains from /etc/hosts
+        log_info "Cleaning up /etc/hosts entries"
+        for config_name in "${nginx_configs[@]}"; do
+            local domain="${config_name%.conf}"
+            if grep -q "127.0.0.1.*$domain" /etc/hosts 2>/dev/null; then
+                log_info "Removing $domain from /etc/hosts"
+                sudo sed -i "/127.0.0.1.*$domain/d" /etc/hosts || log_warn "Failed to remove $domain from /etc/hosts"
+            fi
+        done
+        
+        # Test nginx configuration
+        log_info "Testing nginx configuration"
+        if sudo nginx -t 2>/dev/null; then
+            # Reload nginx
+            log_info "Reloading nginx"
+            sudo systemctl reload nginx || log_warn "Failed to reload nginx"
+        else
+            log_warn "Nginx configuration test failed after cleanup"
+        fi
+        
+        log_info "Removed nginx configurations: ${removed_sites[*]}"
+    else
+        log_info "No nginx configurations found for project: $project_name"
+    fi
+}
+
 # Drop database
 drop_database() {
     local project_name="$1"
@@ -369,6 +456,9 @@ cleanup_deployment() {
     
     # Remove Supervisor configurations
     remove_supervisor_configs "$project_name"
+    
+    # Remove Nginx configurations
+    remove_nginx_configs "$project_name"
     
     # Drop database
     drop_database "$project_name" "$environment"

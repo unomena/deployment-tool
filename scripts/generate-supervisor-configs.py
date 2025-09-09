@@ -46,6 +46,9 @@ class SupervisorConfigGenerator:
         self.code_path = Path(self._get_required_env('CODE_PATH'))
         self.logs_path = Path(self._get_required_env('LOGS_PATH'))
         
+        # Load environment variables from the deployment environment
+        self.env_vars = dict(os.environ)
+        
         # Optional settings with defaults
         self.user = os.getenv('USER', 'www-data')
         self.autostart = os.getenv('AUTOSTART', 'true').lower() == 'true'
@@ -103,11 +106,19 @@ class SupervisorConfigGenerator:
 
     def _substitute_environment_variables(self, value: str, env_vars: Dict[str, str]) -> str:
         """Substitute environment variables in configuration values"""
-        if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
-            var_name = value[2:-1]
-            if var_name in env_vars:
-                return str(env_vars[var_name])
-        return str(value)
+        import re
+        
+        if not isinstance(value, str):
+            return str(value)
+            
+        # Handle complex variable patterns like ${VAR1}-${VAR2}
+        def replace_var(match):
+            var_name = match.group(1)
+            return str(env_vars.get(var_name, match.group(0)))
+        
+        # Replace all ${VAR} patterns in the string
+        result = re.sub(r'\$\{([^}]+)\}', replace_var, value)
+        return result
 
     def _build_environment_string(self, env_vars: Dict[str, str]) -> str:
         """Build environment string for Supervisor configuration"""
