@@ -287,6 +287,7 @@ main() {
     
     # Use the resolved config file from validation
     CONFIG_FILE="$RESOLVED_CONFIG_FILE"
+    echo "DEBUG: CONFIG_FILE is: $CONFIG_FILE" | tee -a "$log_file"
     
     # Verify deployer script exists
     if [[ ! -f "$deployer_script" ]]; then
