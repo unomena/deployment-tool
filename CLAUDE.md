@@ -15,12 +15,12 @@ make lint                           # Run flake8 on Python scripts
 make format                         # Format with black
 make test                           # Run syntax validation and tests
 
-# Deployment (3-parameter interface)
-./deploy <repo_url> <branch> <env>  # Deploy to specified environment
+# Deployment (2-parameter interface)
+./deploy <repo_url> <branch>        # Deploy branch with automatic config fallback
 
 # Examples
-./deploy https://github.com/user/repo.git main prod      # Production deployment
-./deploy git@github.com:user/repo.git feature/new dev    # Development deployment
+./deploy https://github.com/user/repo.git main          # Uses deploy-main.yml or deploy.yml
+./deploy git@github.com:user/repo.git feature/new       # Uses deploy-feature-new.yml or deploy.yml
 ```
 
 ## Architecture
@@ -29,18 +29,22 @@ make test                           # Run syntax validation and tests
 
 **IMPORTANT**: This system maintains strict separation between:
 1. **Deployment tool venv** (`.venv/`) - For running the orchestrator
-2. **Project venvs** (`/srv/deployments/{project}/{env}/{branch}/venv/`) - For each deployed Django app
+2. **Project venvs** (`/srv/deployments/{project}/{branch}/venv/`) - For each deployed Django app
 
 Django operations MUST use `PROJECT_PYTHON_PATH` environment variable pointing to the project's venv Python, not the deployment tool's venv.
 
 ### Directory Structure
 
 ```
-/srv/deployments/{project}/{environment}/{branch}/
+/srv/deployments/{project}/{normalized-branch}/
 ├── code/           # Cloned repository
 ├── venv/           # Project's isolated virtual environment  
 ├── config/         # Generated configs (supervisor, nginx)
+│   ├── supervisor/ # Supervisor service configurations
+│   └── nginx/      # Nginx reverse proxy configurations
 └── logs/           # Application and service logs
+    ├── supervisor/ # Supervisor process logs
+    └── app/        # Application logs
 ```
 
 ### Script Responsibilities
@@ -56,6 +60,8 @@ Each script in `scripts/` handles ONE specific concern:
 - `verify-postgresql-database.sh` - PostgreSQL database/user creation
 - `generate-supervisor-configs.py` - Generate supervisor service configs
 - `install-supervisor-configs.sh` - Install configs to system supervisor
+- `generate-nginx-configs.py` - Generate nginx reverse proxy configurations
+- `install-nginx-configs.sh` - Install nginx configs and setup domains
 
 ### Environment Variable Flow
 
@@ -67,27 +73,35 @@ The orchestrator passes configuration via environment variables:
 
 ## Configuration System
 
-Environment-based YAML configs (`deploy-{env}.yml`):
+Branch-based YAML configs with fallback (`deploy-{branch}.yml` → `deploy.yml`):
 
 ```yaml
 name: "myapp"
-environment: "prod"              # Must match filename suffix
+environment: "dev"               # Optional environment identifier
 python_version: "3.12"
 
 dependencies:
-  system: ["postgresql", "nginx"]
-  python: ["django", "psycopg2"]  
+  system: ["postgresql", "nginx", "redis-server"]
+  python: ["django", "psycopg2", "gunicorn", "celery"]  
   python-requirements: ["requirements.txt"]
 
 env_vars:                        # Passed to Django app
-  DJANGO_SETTINGS_MODULE: "project.settings_prod"
+  DJANGO_SETTINGS_MODULE: "project.settings"
   SECRET_KEY: "..."
-  DB_NAME: "myapp_db"
+  DB_NAME: "myapp_dev_db"
 
-services:                        # Supervisor services
+services:                        # Supervisor services with nginx integration
   - name: web
+    type: gunicorn
     command: "gunicorn project.wsgi:application"
     workers: 3
+    port: 8000                   # Auto-allocated if conflicts
+    domain: "myapp-dev.local"    # Optional domain override
+    
+  - name: worker
+    type: celery
+    command: "celery -A project worker -l info"
+    workers: 2
 ```
 
 ## Development Workflow

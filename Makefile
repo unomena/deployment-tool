@@ -25,7 +25,8 @@ NC := \033[0m # No Color
 # Phony targets
 .PHONY: help build install clean test lint format deploy deploy-branch venv-info check-config validate \
         list-db-permissions create-superuser run-migrations collect-static validate-django \
-        verify-database cleanup-deployments view-logs deployment-status undeploy docs docs-build docs-serve
+        verify-database cleanup-deployments view-logs deployment-status undeploy docs docs-build docs-serve \
+        nginx-status nginx-test nginx-reload system-install
 
 help: ## Display available commands with descriptions
 	@echo "$(GREEN)PyDeployer - Deployment Automation Tool$(NC)"
@@ -43,6 +44,8 @@ help: ## Display available commands with descriptions
 	@echo "  • Uses fallback config: deploy-{branch}.yml → deploy.yml"
 	@echo "  • Domain pattern: {project}-{branch} or custom domain in config"
 	@echo "  • Service-level overrides: domain and env_vars per service"
+	@echo "  • Nginx reverse proxy: All services accessible on port 80"
+	@echo "  • Automatic port allocation: 8000, 8001, 8002... for conflicting services"
 	@echo ""
 
 build: $(VENV_DIR) ## Set up virtual environment and install dependencies
@@ -277,3 +280,25 @@ docs-build: ## Build documentation only
 
 docs-serve: ## Serve documentation (requires docs to be built first)
 	@$(MAKE) -C docs serve
+
+# System Installation Commands
+system-install: ## Install system dependencies (PostgreSQL, Redis, Supervisor, Nginx)
+	@echo "$(YELLOW)Installing system dependencies...$(NC)"
+	sudo ./install
+
+# Nginx Management Commands
+nginx-status: ## Check nginx service status and configuration
+	@echo "$(YELLOW)Checking nginx status...$(NC)"
+	sudo systemctl status nginx --no-pager
+	@echo ""
+	@echo "$(YELLOW)Active nginx sites:$(NC)"
+	sudo ls -la /etc/nginx/sites-enabled/
+
+nginx-test: ## Test nginx configuration
+	@echo "$(YELLOW)Testing nginx configuration...$(NC)"
+	sudo nginx -t
+
+nginx-reload: ## Reload nginx configuration
+	@echo "$(YELLOW)Reloading nginx...$(NC)"
+	sudo nginx -t && sudo systemctl reload nginx
+	@echo "$(GREEN)✓ Nginx reloaded successfully$(NC)"

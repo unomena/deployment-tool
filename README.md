@@ -21,7 +21,8 @@ PyDeployer is a lightweight, modular deployment automation tool designed specifi
 - **Dependency Management**: System and Python dependencies from YAML configuration
 - **Database Integration**: PostgreSQL setup with user permissions and validation
 - **Process Management**: Dynamic Supervisor configuration generation and installation
-- **Nginx Integration**: Automatic reverse proxy configuration generation
+- **Nginx Reverse Proxy**: Automatic nginx configuration with port 80 access for all services
+- **Port Allocation**: Intelligent port assignment (8000, 8001, 8002...) for conflicting services
 - **Git Integration**: Repository cloning with branch support and SSH keys
 - **Comprehensive Validation**: Multi-level deployment validation and health checks
 - **Hook System**: Pre/post-deploy hooks supporting both commands and scripts
@@ -36,6 +37,8 @@ PyDeployer is a lightweight, modular deployment automation tool designed specifi
 - `install-python-dependencies.sh` - Python packages and requirements installation
 - `generate-supervisor-configs.py` - Dynamic Supervisor configuration generation
 - `install-supervisor-configs.sh` - System Supervisor configuration installation
+- `generate-nginx-configs.py` - Nginx reverse proxy configuration generation
+- `install-nginx-configs.sh` - System nginx configuration installation and domain setup
 - `validate-deployment.sh` - Complete deployment validation
 
 ### Django-Specific Scripts
@@ -78,12 +81,19 @@ git clone git@github.com:unomena/deployment-tool.git
 cd deployment-tool
 ```
 
-2. Install Python dependencies:
+2. Install system dependencies (PostgreSQL, Redis, Supervisor, Nginx):
+```bash
+sudo ./install
+# OR using Makefile
+make system-install
+```
+
+3. Install Python dependencies:
 ```bash
 make build
 ```
 
-3. Ensure scripts are executable (should already be set):
+4. Ensure scripts are executable (should already be set):
 ```bash
 chmod +x scripts/*.sh scripts/*.py
 ```
@@ -258,27 +268,44 @@ services:
       API_VERSION: "v2"
 ```
 
-## Nginx Configuration
+## Nginx Reverse Proxy Integration
 
-The deployment tool automatically generates nginx reverse proxy configurations for web services:
+The deployment tool automatically generates and installs nginx reverse proxy configurations for all web services, providing seamless port 80 access.
+
+### Automatic Features
+- **Port 80 Access**: All services accessible via standard HTTP port
+- **Domain-Based Routing**: Each service gets its own domain/subdomain
+- **Intelligent Port Allocation**: Automatic port assignment (8000, 8001, 8002...) for conflicting services
+- **Automatic Installation**: Nginx configs generated and enabled during deployment
+- **Domain Management**: Automatic `/etc/hosts` entries for local testing
 
 ### Generated Files
 - `config/nginx/{domain}.conf` - Individual site configurations
-- `config/nginx/README.md` - Deployment instructions
+- `config/nginx/README.md` - Deployment instructions and URLs
 
-### Features
-- Automatic upstream configuration based on service ports
+### Configuration Features
+- Upstream configuration based on allocated service ports
 - SSL-ready configurations (commented out by default)
 - Static/media file serving for Django applications
-- Security headers and optimizations
-- Health check endpoints
+- Security headers and performance optimizations
+- Health check endpoints (`/nginx-health`)
 
-### Manual Deployment
-After deployment, copy nginx configurations:
+### Access URLs
+After deployment, services are accessible via:
+- **Main service**: `http://{project-name}-{branch}/` → Django on port 8000
+- **Additional services**: `http://{custom-domain}/` → Django on allocated ports
+- **Example**: `http://sampleapp-dev/`, `http://goodtimes.local/`, `http://admin.goodtimes.local/`
+
+### Manual Management
 ```bash
-sudo cp /srv/deployments/{project}/{branch}/config/nginx/*.conf /etc/nginx/sites-available/
-sudo ln -sf /etc/nginx/sites-available/{domain}.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+# Check nginx status
+make nginx-status
+
+# Test nginx configuration
+make nginx-test
+
+# Reload nginx after manual changes
+make nginx-reload
 ```
 
 ## Usage
