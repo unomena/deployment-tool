@@ -23,8 +23,7 @@ make venv-info
 # Replace with your repository URL
 make deploy \
   REPO_URL=git@github.com:user/your-django-app.git \
-  BRANCH=main \
-  ENV=dev
+  BRANCH=main
 ```
 
 This single command will:
@@ -39,7 +38,7 @@ This single command will:
 
 ```bash
 # Set your project directory (adjust path as needed)
-PROJECT_DIR=/srv/deployments/your-django-app/dev/main/code
+PROJECT_DIR=/srv/deployments/your-django-app/main/code
 
 # Run database migrations
 make run-migrations PROJECT_DIR=$PROJECT_DIR
@@ -55,10 +54,10 @@ make create-superuser PROJECT_DIR=$PROJECT_DIR
 
 ```bash
 # Check deployment status
-make deployment-status PROJECT=your-django-app ENV=dev BRANCH=main
+make deployment-status PROJECT=your-django-app BRANCH=main
 
 # View application logs
-make view-logs PROJECT=your-django-app ENV=dev BRANCH=main
+make view-logs PROJECT=your-django-app BRANCH=main
 ```
 
 ## Your Application is Live!
@@ -77,17 +76,17 @@ Your Django application should now be running. The default configuration typical
 make list-db-permissions DB=yourapp_dev
 
 # Verify database connection
-make verify-database PROJECT=your-django-app ENV=dev BRANCH=main
+make verify-database PROJECT=your-django-app BRANCH=main
 ```
 
 ### Monitoring
 
 ```bash
 # Real-time log monitoring
-make view-logs PROJECT=your-django-app ENV=dev BRANCH=main SERVICE=web
+make view-logs PROJECT=your-django-app BRANCH=main SERVICE=web
 
 # Check all services
-make deployment-status PROJECT=your-django-app ENV=dev BRANCH=main
+make deployment-status PROJECT=your-django-app BRANCH=main
 ```
 
 ### Updates and Maintenance
@@ -96,11 +95,10 @@ make deployment-status PROJECT=your-django-app ENV=dev BRANCH=main
 # Redeploy with latest changes
 make deploy \
   REPO_URL=git@github.com:user/your-django-app.git \
-  BRANCH=main \
-  ENV=dev
+  BRANCH=main
 
 # Run new migrations after updates
-make run-migrations PROJECT_DIR=/srv/deployments/your-django-app/dev/main/code
+make run-migrations PROJECT_DIR=/srv/deployments/your-django-app/main/code
 ```
 
 ## Configuration Template
@@ -108,28 +106,32 @@ make run-migrations PROJECT_DIR=/srv/deployments/your-django-app/dev/main/code
 Create a deployment configuration file for your project:
 
 ```yaml
-# projects/your-django-app/deploy-dev.yml
+# projects/your-django-app/deploy-main.yml
 name: your-django-app
 repo: git@github.com:user/your-django-app.git
-branch: main
-environment: dev
 
 python_version: "3.11"
 
-system_dependencies:
-  - build-essential
-  - libpq-dev
+dependencies:
+  system:
+    - build-essential
+    - libpq-dev
+  python-requirements:
+    - requirements.txt
 
 database:
-  name: yourapp_dev
-  user: yourapp_user
-  password: ${YOURAPP_DB_PASSWORD}
+  type: postgresql
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
 
 env_vars:
-  DJANGO_SETTINGS_MODULE: yourapp.settings.dev
+  DJANGO_SETTINGS_MODULE: yourapp.settings
   DEBUG: "True"
   SECRET_KEY: ${DJANGO_SECRET_KEY}
-  DATABASE_URL: postgresql://yourapp_user:${YOURAPP_DB_PASSWORD}@localhost/yourapp_dev
+  DB_NAME: "${PROJECT_NAME}_${NORMALIZED_BRANCH}"
+  DB_USER: "${PROJECT_NAME}_${NORMALIZED_BRANCH}"
+  DB_PASSWORD: ${YOURAPP_DB_PASSWORD}
 
 services:
   - name: web
@@ -159,19 +161,19 @@ EOF
 source .env
 ```
 
-## Multiple Environments
+## Multiple Branch Deployments
 
-Deploy to different environments:
+Deploy different branches:
 
 ```bash
-# Development
-make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=develop ENV=dev
+# Development branch
+make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=develop
 
-# Staging
-make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=main ENV=stage
+# Feature branch
+make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=feature/new-ui
 
-# Production
-make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=main ENV=prod
+# Main/Production branch
+make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=main
 ```
 
 ## Troubleshooting Quick Fixes
@@ -180,27 +182,27 @@ make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=main ENV=prod
 
 ```bash
 # Check logs for errors
-make view-logs PROJECT=your-django-app ENV=dev BRANCH=main
+make view-logs PROJECT=your-django-app BRANCH=main
 
 # Validate configuration
-make validate CONFIG=projects/your-django-app/deploy-dev.yml
+make validate CONFIG=projects/your-django-app/deploy-main.yml
 
 # Clean and retry
-make undeploy PROJECT=your-django-app ENV=dev BRANCH=main
-make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=main ENV=dev
+make undeploy PROJECT=your-django-app BRANCH=main
+make deploy REPO_URL=git@github.com:user/your-app.git BRANCH=main
 ```
 
 ### Database Issues
 
 ```bash
 # Check database connection
-make verify-database PROJECT=your-django-app ENV=dev BRANCH=main
+make verify-database PROJECT=your-django-app BRANCH=main
 
 # List database users and permissions
-make list-db-permissions DB=yourapp_dev
+make list-db-permissions DB=yourapp_main
 
 # Validate Django database settings
-make validate-django PROJECT_DIR=/srv/deployments/your-django-app/dev/main/code
+make validate-django PROJECT_DIR=/srv/deployments/your-django-app/main/code
 ```
 
 ### Service Issues
@@ -210,7 +212,7 @@ make validate-django PROJECT_DIR=/srv/deployments/your-django-app/dev/main/code
 sudo supervisorctl status
 
 # Restart specific service
-sudo supervisorctl restart your-django-app-dev-web
+sudo supervisorctl restart your-django-app-main-web
 
 # View supervisor logs
 sudo tail -f /var/log/supervisor/supervisord.log

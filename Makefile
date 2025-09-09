@@ -10,8 +10,7 @@ PIP_VENV := $(VENV_BIN)/pip
 DEPLOY_SCRIPT := scripts/deploy.py
 REQUIREMENTS := requirements.txt
 
-# Default config file (can be overridden)
-CONFIG ?= deploy-branch.yml
+# Default branch for deployment
 BRANCH ?= main
 
 # Colors for output
@@ -35,9 +34,15 @@ help: ## Display available commands with descriptions
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "$(YELLOW)Usage examples:$(NC)"
-	@echo "  make build                                    # Set up development environment"
-	@echo "  make deploy REPO_URL=<repo> BRANCH=main ENV=prod    # Deploy main branch to production"
-	@echo "  make deploy REPO_URL=<repo> BRANCH=dev ENV=dev      # Deploy dev branch to development"
+	@echo "  make build                                          # Set up development environment"
+	@echo "  make deploy REPO_URL=<repo> BRANCH=main             # Deploy main branch"
+	@echo "  make deploy REPO_URL=<repo> BRANCH=feature/auth     # Deploy feature branch"
+	@echo "  make deploy REPO_URL=<repo> BRANCH=dev               # Deploy dev branch"
+	@echo ""
+	@echo "$(YELLOW)Configuration:$(NC)"
+	@echo "  • Uses fallback config: deploy-{branch}.yml → deploy.yml"
+	@echo "  • Domain pattern: {project}-{branch} or custom domain in config"
+	@echo "  • Service-level overrides: domain and env_vars per service"
 	@echo ""
 
 build: $(VENV_DIR) ## Set up virtual environment and install dependencies
@@ -63,26 +68,32 @@ venv-info: $(VENV_DIR) ## Display virtual environment information
 	@echo "  Installed packages:"
 	@$(PIP_VENV) list --format=columns
 
-check-config: ## Validate that CONFIG file exists and is readable
-	@if [ ! -f "$(CONFIG)" ]; then \
-		echo "$(RED)✗ Config file not found: $(CONFIG)$(NC)"; \
-		echo "$(YELLOW)Usage: make deploy CONFIG=your-config.yml$(NC)"; \
+validate-config: ## Validate deployment configuration for a project (requires PROJECT, BRANCH)
+	@echo "$(YELLOW)Validating deployment configuration...$(NC)"
+	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	@NORMALIZED_BRANCH=$$(echo "$(BRANCH)" | sed 's/\//-/g'); \
+	CONFIG_FILE="projects/$(PROJECT)/deploy-$$NORMALIZED_BRANCH.yml"; \
+	FALLBACK_CONFIG="projects/$(PROJECT)/deploy.yml"; \
+	if [ -f "$$CONFIG_FILE" ]; then \
+		echo "$(GREEN)✓ Found branch-specific config: $$CONFIG_FILE$(NC)"; \
+		python3 -c "import yaml; yaml.safe_load(open('$$CONFIG_FILE')); print('✓ YAML syntax valid')"; \
+	elif [ -f "$$FALLBACK_CONFIG" ]; then \
+		echo "$(GREEN)✓ Found fallback config: $$FALLBACK_CONFIG$(NC)"; \
+		python3 -c "import yaml; yaml.safe_load(open('$$FALLBACK_CONFIG')); print('✓ YAML syntax valid')"; \
+	else \
+		echo "$(RED)✗ No configuration found for $(PROJECT)/$(BRANCH)$(NC)"; \
+		echo "$(YELLOW)Looked for: $$CONFIG_FILE and $$FALLBACK_CONFIG$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(GREEN)✓ Config file found: $(CONFIG)$(NC)"
-
-validate: $(VENV_DIR) check-config ## Validate deployment configuration without deploying
-	@echo "$(YELLOW)Validating deployment configuration...$(NC)"
-	$(PYTHON_VENV) -c "import yaml; config = yaml.safe_load(open('$(CONFIG)')); print('✓ YAML syntax valid')"
 	@echo "$(GREEN)✓ Configuration validation complete$(NC)"
 
-deploy: ## Deploy application using simplified interface (requires REPO_URL, BRANCH, ENV variables)
+deploy: ## Deploy application using simplified interface (requires REPO_URL, BRANCH variables)
 	@echo "$(GREEN)Starting deployment with simplified interface...$(NC)"
-	@echo "$(YELLOW)Usage: make deploy REPO_URL=<url> BRANCH=<branch> ENV=<environment>$(NC)"
+	@echo "$(YELLOW)Usage: make deploy REPO_URL=<url> BRANCH=<branch>$(NC)"
 	@if [ -z "$(REPO_URL)" ]; then echo "$(RED)Error: REPO_URL is required$(NC)"; exit 1; fi
 	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
-	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required (prod|stage|qa|dev|branch)$(NC)"; exit 1; fi
-	./deploy $(REPO_URL) $(BRANCH) $(ENV)
+	./deploy $(REPO_URL) $(BRANCH)
 
 test: $(VENV_DIR) ## Run tests for the deployment script
 	@echo "$(YELLOW)Running deployment script tests...$(NC)"
@@ -135,15 +146,15 @@ freeze: $(VENV_DIR) ## Generate requirements file with current package versions
 dev-setup: build lint format ## Complete development setup with linting and formatting tools
 	@echo "$(GREEN)✓ Development setup complete$(NC)"
 
-# Quick deployment shortcuts for common environments
-deploy-dev: ## Quick deploy to dev environment (assumes deploy-dev.yml exists)
-	@$(MAKE) deploy CONFIG=deploy-dev.yml
+# Quick deployment shortcuts for common branches
+deploy-main: ## Quick deploy main branch (requires REPO_URL)
+	@$(MAKE) deploy BRANCH=main
 
-deploy-staging: ## Quick deploy to staging environment (assumes deploy-staging.yml exists)
-	@$(MAKE) deploy CONFIG=deploy-staging.yml
+deploy-dev: ## Quick deploy dev branch (requires REPO_URL)
+	@$(MAKE) deploy BRANCH=dev
 
-deploy-prod: ## Quick deploy to production environment (assumes deploy-prod.yml exists)
-	@$(MAKE) deploy CONFIG=deploy-prod.yml
+deploy-qa: ## Quick deploy qa branch (requires REPO_URL)
+	@$(MAKE) deploy BRANCH=qa
 
 # System requirements check
 check-system: ## Check system requirements for deployment
@@ -154,14 +165,27 @@ check-system: ## Check system requirements for deployment
 	@echo "$(GREEN)✓ System requirements satisfied$(NC)"
 
 # Show current configuration
-show-config: check-config ## Display current deployment configuration
-	@echo "$(YELLOW)Current Deployment Configuration:$(NC)"
-	@echo "  Config file: $(CONFIG)"
+show-config: ## Display deployment configuration for a project (requires PROJECT, BRANCH)
+	@echo "$(YELLOW)Deployment Configuration:$(NC)"
+	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
+	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
+	@echo "  Project: $(PROJECT)"
 	@echo "  Branch: $(BRANCH)"
 	@echo "  Script: $(DEPLOY_SCRIPT)"
 	@echo ""
-	@echo "$(YELLOW)Configuration contents:$(NC)"
-	@cat $(CONFIG)
+	@NORMALIZED_BRANCH=$$(echo "$(BRANCH)" | sed 's/\//-/g'); \
+	CONFIG_FILE="projects/$(PROJECT)/deploy-$$NORMALIZED_BRANCH.yml"; \
+	FALLBACK_CONFIG="projects/$(PROJECT)/deploy.yml"; \
+	if [ -f "$$CONFIG_FILE" ]; then \
+		echo "$(YELLOW)Using branch-specific config: $$CONFIG_FILE$(NC)"; \
+		cat "$$CONFIG_FILE"; \
+	elif [ -f "$$FALLBACK_CONFIG" ]; then \
+		echo "$(YELLOW)Using fallback config: $$FALLBACK_CONFIG$(NC)"; \
+		cat "$$FALLBACK_CONFIG"; \
+	else \
+		echo "$(RED)No configuration found for $(PROJECT)/$(BRANCH)$(NC)"; \
+		echo "$(YELLOW)Looked for: $$CONFIG_FILE and $$FALLBACK_CONFIG$(NC)"; \
+	fi
 
 # Dependencies update
 update-requirements: $(VENV_DIR) ## Update requirements.txt with new dependencies
@@ -207,12 +231,11 @@ validate-django: ## Validate Django environment (requires PROJECT_DIR)
 	@if [ -z "$(PROJECT_DIR)" ]; then echo "$(RED)Error: PROJECT_DIR is required$(NC)"; exit 1; fi
 	bash scripts/validate-django-environment.sh $(PROJECT_DIR)
 
-verify-database: ## Verify PostgreSQL database connection and setup (requires PROJECT, ENV, BRANCH)
+verify-database: ## Verify PostgreSQL database connection and setup (requires PROJECT, BRANCH)
 	@echo "$(YELLOW)Verifying database setup...$(NC)"
 	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
-	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
 	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
-	bash scripts/verify-postgresql-database.sh $(PROJECT) $(ENV) $(BRANCH)
+	bash scripts/verify-postgresql-database.sh $(PROJECT) $(BRANCH)
 
 # Deployment Management Commands
 cleanup-deployments: ## Clean up old deployments (optionally specify DAYS_OLD)
@@ -223,30 +246,27 @@ cleanup-deployments: ## Clean up old deployments (optionally specify DAYS_OLD)
 		bash scripts/cleanup-deployments.sh; \
 	fi
 
-view-logs: ## View deployment logs (requires PROJECT, ENV, BRANCH, optionally SERVICE)
+view-logs: ## View deployment logs (requires PROJECT, BRANCH, optionally SERVICE)
 	@echo "$(YELLOW)Viewing deployment logs...$(NC)"
 	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
-	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
 	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
 	@if [ -n "$(SERVICE)" ]; then \
-		bash scripts/view-logs.sh $(PROJECT) $(ENV) $(BRANCH) $(SERVICE); \
+		bash scripts/view-logs.sh $(PROJECT) $(BRANCH) $(SERVICE); \
 	else \
-		bash scripts/view-logs.sh $(PROJECT) $(ENV) $(BRANCH); \
+		bash scripts/view-logs.sh $(PROJECT) $(BRANCH); \
 	fi
 
-deployment-status: ## Check deployment status (requires PROJECT, ENV, BRANCH)
+deployment-status: ## Check deployment status (requires PROJECT, BRANCH)
 	@echo "$(YELLOW)Checking deployment status...$(NC)"
 	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
-	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
 	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
-	bash scripts/deployment-status.sh $(PROJECT) $(ENV) $(BRANCH)
+	bash scripts/deployment-status.sh $(PROJECT) $(BRANCH)
 
-undeploy: ## Remove a deployment (requires PROJECT, ENV, BRANCH)
+undeploy: ## Remove a deployment (requires PROJECT, BRANCH)
 	@echo "$(YELLOW)Removing deployment...$(NC)"
 	@if [ -z "$(PROJECT)" ]; then echo "$(RED)Error: PROJECT is required$(NC)"; exit 1; fi
-	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV is required$(NC)"; exit 1; fi
 	@if [ -z "$(BRANCH)" ]; then echo "$(RED)Error: BRANCH is required$(NC)"; exit 1; fi
-	./undeploy $(PROJECT) $(ENV) $(BRANCH)
+	./undeploy $(PROJECT) $(BRANCH)
 
 # Documentation Commands
 docs: ## Build and serve documentation locally

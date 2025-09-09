@@ -11,11 +11,17 @@ PyDeployer is a lightweight, modular deployment automation tool designed specifi
 
 ## Features
 
+- **Branch-Only Deployment**: Deploy any branch without environment parameters
+- **Fallback Configuration**: `deploy-{branch}.yml` → `deploy.yml` automatic fallback
+- **Domain Configuration**: Flexible domain management with service-level overrides
+- **Multi-Site Support**: Serve multiple sites from same codebase with different domains
+- **Service-Level Overrides**: Per-service environment variables and domain configuration
 - **Modular Script Architecture**: Separate scripts for each deployment concern
 - **Automated Environment Setup**: Python virtual environments with version management
 - **Dependency Management**: System and Python dependencies from YAML configuration
 - **Database Integration**: PostgreSQL setup with user permissions and validation
 - **Process Management**: Dynamic Supervisor configuration generation and installation
+- **Nginx Integration**: Automatic reverse proxy configuration generation
 - **Git Integration**: Repository cloning with branch support and SSH keys
 - **Comprehensive Validation**: Multi-level deployment validation and health checks
 - **Hook System**: Pre/post-deploy hooks supporting both commands and scripts
@@ -40,16 +46,20 @@ PyDeployer is a lightweight, modular deployment automation tool designed specifi
 ## Directory Structure
 
 ```
-/srv/deployments/{project}/{environment}/{branch}/
+/srv/deployments/{project}/{normalized-branch}/
 ├── code/           # Application source code (cloned repository)
 ├── config/         # Generated configuration files
 │   ├── supervisor/ # Supervisor service configurations
-│   └── nginx/      # Nginx configurations (if applicable)
+│   └── nginx/      # Nginx reverse proxy configurations
 ├── logs/           # Application and service logs
 │   ├── supervisor/ # Supervisor process logs
 │   └── app/        # Application logs
+├── static/         # Django static files (if applicable)
+├── media/          # Django media files (if applicable)
 └── venv/           # Python virtual environment
 ```
+
+**Branch Normalization**: Branch names with slashes are normalized (e.g., `feature/auth` → `feature-auth`)
 
 ## Installation
 
@@ -80,41 +90,47 @@ chmod +x scripts/*.sh scripts/*.py
 
 ## Quick Start
 
-The deployment tool uses a simplified 3-parameter interface:
+The deployment tool uses a simplified 2-parameter interface:
 
 ```bash
-./deploy <repository_url> <branch_or_sha> <environment>
+./deploy <repository_url> <branch_or_sha>
 ```
+
+### Configuration Files
+
+The deployment tool uses a **fallback configuration system**:
+
+1. **Branch-specific config**: `deploy-{normalized-branch}.yml` (e.g., `deploy-dev.yml`, `deploy-feature-auth.yml`)
+2. **Default fallback**: `deploy.yml` (used when branch-specific config doesn't exist)
+
+**Examples**:
+- `deploy-main.yml` for main branch deployments
+- `deploy-dev.yml` for dev branch deployments  
+- `deploy-feature-auth.yml` for feature/auth branch deployments
+- `deploy.yml` as fallback for any branch without specific config
 
 ### Basic Usage
 
-1. Ensure your repository contains deployment configuration files:
-   - `deploy-prod.yml` for production deployments
-   - `deploy-stage.yml` for staging deployments  
-   - `deploy-qa.yml` for QA deployments
-   - `deploy-dev.yml` for development deployments
-   - `deploy-branch.yml` for branch/feature deployments
-
-2. Deploy directly from any repository:
+Deploy directly from any repository:
 ```bash
-# Deploy main branch to production
-./deploy https://github.com/myorg/myapp.git main prod
+# Deploy main branch
+./deploy https://github.com/myorg/myapp.git main
 
-# Deploy feature branch to development
-./deploy git@github.com:myorg/myapp.git feature/new-ui dev
+# Deploy feature branch (creates feature-new-ui deployment)
+./deploy git@github.com:myorg/myapp.git feature/new-ui
 
-# Deploy specific version to staging
-./deploy https://github.com/myorg/myapp.git v1.2.3 stage
+# Deploy specific version
+./deploy https://github.com/myorg/myapp.git v1.2.3
 
-# Deploy experimental branch for testing
-./deploy git@github.com:myorg/myapp.git experimental-feature branch
+# Deploy qa branch
+./deploy git@github.com:myorg/myapp.git qa
 ```
 
 ### Using Makefile
 
 ```bash
 # Deploy with Makefile
-make deploy REPO_URL=https://github.com/myorg/myapp.git BRANCH=main ENV=prod
+make deploy REPO_URL=https://github.com/myorg/myapp.git BRANCH=main
 ```
 
 ### Development/Testing
@@ -126,13 +142,13 @@ chmod +x deploy.py
 
 ## Configuration File Format
 
-The deployment script reads YAML configuration files. Here's the structure:
+The deployment script reads YAML configuration files with support for domain configuration and service-level overrides:
 
 ```yaml
 name: sample-app                    # Project name
-environment: dev                    # Environment (prod/qa/stage/dev)
 repo: git@github.com:user/repo.git  # Git repository (optional)
 python_version: "3.12"              # Python version
+domain: "myapp.local"               # Default domain for all web services
 
 dependencies:
   system:                           # Ubuntu packages
@@ -148,12 +164,12 @@ dependencies:
   python-requirements:              # Requirements files
     - requirements.txt
 
-environment:                        # Environment variables
+env_vars:                           # Root environment variables (inherited by all services)
   DJANGO_SETTINGS_MODULE: project.settings_dev
   DEBUG: "0"
   SECRET_KEY: "your-secret-key"
   DB_HOST: "localhost"
-  DB_NAME: "myapp-db"
+  DB_NAME: "${PROJECT_NAME}-${NORMALIZED_BRANCH}"  # Note: hyphens, not underscores
 
 database:                           # Database configuration
   type: postgresql
@@ -168,33 +184,127 @@ services:                           # Services to run
     type: gunicorn
     command: "gunicorn project.wsgi:application"
     workers: 3
-    port: 8010
+    port: 8000
+    # Uses default domain: myapp.local
+    # Uses all root env_vars
+
+  - name: admin
+    type: gunicorn
+    command: "gunicorn project.wsgi:application"
+    workers: 2
+    port: 8001
+    domain: "admin.myapp.local"      # Service-specific domain override
+    env_vars:                        # Service-specific environment variables
+      DJANGO_SETTINGS_MODULE: "project.settings.admin"  # Override root setting
+      DEBUG: "True"                 # Override root setting
+      ADMIN_ONLY: "True"            # New variable specific to this service
+      # All other root env_vars are still inherited
 
   - name: worker
     type: celery
     command: "celery -A project worker -l info"
     workers: 4
+    # No domain (not a web service)
+    # Uses all root env_vars as-is
+```
 
-  - name: beat
-    type: celery
-    command: "celery -A project beat -l info"
+## Domain Configuration
+
+### Default Domain Pattern
+If no `domain` is specified in the configuration, the default pattern is:
+```
+{project-name}-{normalized-branch}
+```
+
+Examples:
+- `sample-app` + `main` → `sample-app-main`
+- `good-times-unomena` + `feature/auth` → `good-times-unomena-feature-auth`
+
+### Root Domain Override
+Set a default domain for all web services:
+```yaml
+domain: "myapp.local"  # All web services use this domain by default
+```
+
+### Service-Level Domain Override
+Override domain for specific services:
+```yaml
+services:
+  - name: web
+    domain: "www.myapp.local"  # Override for this service only
+  - name: admin
+    domain: "admin.myapp.local"  # Different domain for admin
+```
+
+### Multi-Site Deployment
+Serve completely different sites from the same codebase:
+```yaml
+domain: "myapp.local"  # Default domain
+
+services:
+  - name: web
+    # Uses default domain: myapp.local
+    
+  - name: admin
+    domain: "admin.myapp.local"
+    env_vars:
+      DJANGO_SETTINGS_MODULE: "myapp.settings.admin"
+      SITE_THEME: "admin"
+      
+  - name: api
+    domain: "api.myapp.local"
+    env_vars:
+      DJANGO_SETTINGS_MODULE: "myapp.settings.api"
+      API_VERSION: "v2"
+```
+
+## Nginx Configuration
+
+The deployment tool automatically generates nginx reverse proxy configurations for web services:
+
+### Generated Files
+- `config/nginx/{domain}.conf` - Individual site configurations
+- `config/nginx/README.md` - Deployment instructions
+
+### Features
+- Automatic upstream configuration based on service ports
+- SSL-ready configurations (commented out by default)
+- Static/media file serving for Django applications
+- Security headers and optimizations
+- Health check endpoints
+
+### Manual Deployment
+After deployment, copy nginx configurations:
+```bash
+sudo cp /srv/deployments/{project}/{branch}/config/nginx/*.conf /etc/nginx/sites-available/
+sudo ln -sf /etc/nginx/sites-available/{domain}.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ## Usage
 
-### Basic Deployment
+### Command Line Interface
 ```bash
-sudo python3 deploy.py deploy-branch.yml
+# Basic deployment
+./deploy <repository_url> <branch>
+
+# Examples
+./deploy https://github.com/myorg/myapp.git main
+./deploy git@github.com:myorg/myapp.git feature/auth
 ```
 
-### Deploy Specific Branch
+### Makefile Interface
 ```bash
-sudo python3 deploy.py deploy-branch.yml --branch feature-branch
-```
+# Deploy using Makefile
+make deploy REPO_URL=<url> BRANCH=<branch>
 
-### Verbose Output
-```bash
-sudo python3 deploy.py deploy-branch.yml --verbose
+# Quick shortcuts
+make deploy-main REPO_URL=<url>
+make deploy-dev REPO_URL=<url>
+
+# Configuration validation
+make validate-config PROJECT=<project> BRANCH=<branch>
+make show-config PROJECT=<project> BRANCH=<branch>
 ```
 
 ## What the Script Does
@@ -214,16 +324,16 @@ sudo python3 deploy.py deploy-branch.yml --verbose
 For each service, the script generates a Supervisor configuration like:
 
 ```ini
-[program:sample-app-web]
-command=/srv/deployments/sample-app/dev/main/venv/bin/gunicorn project.wsgi:application
-directory=/srv/deployments/sample-app/dev/main/code
+[program:sample-app-main-web]
+command=/srv/deployments/sample-app/main/venv/bin/gunicorn project.wsgi:application
+directory=/srv/deployments/sample-app/main/code
 user=www-data
 autostart=true
 autorestart=true
 startsecs=10
 startretries=3
-stdout_logfile=/srv/deployments/sample-app/dev/main/logs/supervisor/web.log
-stderr_logfile=/srv/deployments/sample-app/dev/main/logs/supervisor/web_error.log
+stdout_logfile=/srv/deployments/sample-app/main/logs/supervisor/web.log
+stderr_logfile=/srv/deployments/sample-app/main/logs/supervisor/web_error.log
 environment=DJANGO_SETTINGS_MODULE=project.settings_dev,DEBUG=0,SECRET_KEY=your-secret-key
 numprocs=3
 process_name=%(program_name)s_%(process_num)02d
@@ -263,8 +373,8 @@ sudo supervisorctl status
 
 ### Restart Services
 ```bash
-sudo supervisorctl restart sample-app-web:*
-sudo supervisorctl restart sample-app-worker:*
+sudo supervisorctl restart sample-app-main-web:*
+sudo supervisorctl restart sample-app-main-worker:*
 ```
 
 ## Troubleshooting
@@ -286,8 +396,8 @@ sudo apt-get install python3.12 python3.12-venv
 ### Supervisor Not Starting Services
 Check Supervisor logs:
 ```bash
-sudo supervisorctl tail sample-app-web stderr
-sudo tail -f /srv/deployments/sample-app/dev/main/logs/supervisor/web_error.log
+sudo supervisorctl tail sample-app-main-web stderr
+sudo tail -f /srv/deployments/sample-app/main/logs/supervisor/web_error.log
 ```
 
 ## Security Considerations

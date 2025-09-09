@@ -1,17 +1,16 @@
 #!/bin/bash
 # undeploy - Remove Django deployments safely
 # 
-# Usage: ./undeploy <project> <environment> [branch]
+# Usage: ./undeploy <project> <branch>
 #
 # Parameters:
 #   project      - Project name (e.g., sampleapp, uno-admin)
-#   environment  - Environment name (dev, stage, qa, prod)
-#   branch       - Branch name (optional, defaults to main)
+#   branch       - Branch name (slashes converted to hyphens)
 #
 # Examples:
-#   ./undeploy sampleapp dev
-#   ./undeploy uno-admin dev integration
-#   ./undeploy myapp stage feature-branch
+#   ./undeploy sampleapp main
+#   ./undeploy uno-admin dev
+#   ./undeploy myapp feature/auth
 
 set -e  # Exit on any error
 
@@ -21,28 +20,25 @@ source "$(dirname "$0")/scripts/logging-utils.sh"
 # Show usage information
 show_usage() {
     cat << EOF
-Usage: ./undeploy <project> <environment> [branch]
+Usage: ./undeploy <project> <branch>
 
 PARAMETERS:
     project       Project name (e.g., sampleapp, uno-admin)
-    environment   Environment name (dev, stage, qa, prod)
-    branch        Branch name (optional, defaults to main)
+    branch        Branch name (slashes converted to hyphens)
 
-ENVIRONMENTS:
-    dev      - Development environment
-    stage    - Staging environment  
-    qa       - QA environment
-    prod     - Production environment (protected)
+BRANCH NAMING:
+    - Branch names with slashes are converted to hyphens for filesystem compatibility
+    - Examples: 'main', 'dev', 'qa', 'feature/auth' → 'feature-auth'
 
 EXAMPLES:
-    # Remove development deployment
-    ./undeploy sampleapp dev
+    # Remove main branch deployment
+    ./undeploy sampleapp main
     
-    # Remove specific branch deployment
-    ./undeploy uno-admin dev integration
+    # Remove dev branch deployment
+    ./undeploy uno-admin dev
     
-    # Remove staging deployment
-    ./undeploy myapp stage
+    # Remove feature branch deployment
+    ./undeploy myapp feature/auth
 
 SAFETY FEATURES:
     - Interactive confirmation required
@@ -53,10 +49,17 @@ SAFETY FEATURES:
 
 NOTES:
     - Backups are stored in /srv/deployment-backups/
-    - Production environments (prod, production, live) cannot be removed
     - Requires sudo privileges for system operations
+    - Branch names with slashes are automatically converted to hyphens
 
 EOF
+}
+
+# Convert branch name to filesystem-safe format
+convert_branch_name() {
+    local branch="$1"
+    # Replace slashes with hyphens for filesystem compatibility
+    echo "${branch//\//-}"
 }
 
 # Validate parameters
@@ -68,18 +71,12 @@ validate_parameters() {
     fi
     
     PROJECT="$1"
-    ENVIRONMENT="$2"
-    BRANCH="${3:-main}"
+    BRANCH="$2"
+    NORMALIZED_BRANCH=$(convert_branch_name "$BRANCH")
     
     # Validate project name
     if [[ ! "$PROJECT" =~ ^[a-zA-Z0-9_-]+$ ]]; then
         log_error "Invalid project name '$PROJECT'. Use only letters, numbers, hyphens, and underscores."
-        exit 1
-    fi
-    
-    # Validate environment name
-    if [[ ! "$ENVIRONMENT" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        log_error "Invalid environment name '$ENVIRONMENT'. Use only letters, numbers, hyphens, and underscores."
         exit 1
     fi
     
@@ -90,16 +87,16 @@ validate_parameters() {
     fi
     
     log_info "Project: $PROJECT"
-    log_info "Environment: $ENVIRONMENT"
     log_info "Branch: $BRANCH"
+    log_info "Normalized branch: $NORMALIZED_BRANCH"
 }
 
 # Check if deployment exists
 check_deployment_exists() {
-    local deployment_path="/srv/deployments/$PROJECT/$ENVIRONMENT/$BRANCH"
+    local deployment_path="/srv/deployments/$PROJECT/$NORMALIZED_BRANCH"
     
     if [[ ! -d "$deployment_path" ]]; then
-        log_error "Deployment not found: $PROJECT/$ENVIRONMENT/$BRANCH"
+        log_error "Deployment not found: $PROJECT/$NORMALIZED_BRANCH"
         log_error "Path does not exist: $deployment_path"
         log_info "Use './status' to see available deployments"
         exit 1
@@ -126,7 +123,7 @@ main() {
     
     # Create undeploy header in log
     {
-        echo "[UNDEPLOY] $PROJECT $ENVIRONMENT $BRANCH"
+        echo "[UNDEPLOY] $PROJECT $BRANCH"
         echo "========================================"
         echo ""
     } | tee "$log_file"
@@ -146,10 +143,10 @@ main() {
     # Run the cleanup script
     log_step "Executing cleanup script" | tee -a "$log_file"
     
-    if "$cleanup_script" "$PROJECT" "$ENVIRONMENT" 2>&1 | tee -a "$log_file"; then
+    if "$cleanup_script" "$PROJECT" "$NORMALIZED_BRANCH" 2>&1 | tee -a "$log_file"; then
         # Update deployment registry to remove the deployment
         log_step "Updating deployment registry" | tee -a "$log_file"
-        if python3 "$script_dir/scripts/manage-deployments-registry.py" remove --project "$PROJECT" --environment "$ENVIRONMENT" 2>&1 | tee -a "$log_file"; then
+        if python3 "$script_dir/scripts/manage-deployments-registry.py" remove --project "$PROJECT" --branch "$NORMALIZED_BRANCH" 2>&1 | tee -a "$log_file"; then
             log_info "✓ Deployment registry updated successfully" | tee -a "$log_file"
         else
             log_warn "⚠ Failed to update deployment registry (non-critical)" | tee -a "$log_file"

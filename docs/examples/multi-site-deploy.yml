@@ -1,0 +1,148 @@
+name: multi-site-example
+python_version: "3.11"
+domain: "myapp.local"  # Default domain for all web services
+
+repo: git@github.com:myorg/multi-site-app.git
+
+dependencies:
+  system:
+    - postgresql-client
+    - libpq-dev
+    - python3-dev
+    - build-essential
+    - supervisor
+    - redis-server
+  python: []
+  python-requirements:
+    - requirements.txt
+
+env_vars:
+  # Root-level environment variables (apply to all services unless overridden)
+  DJANGO_SETTINGS_MODULE: myapp.settings.production
+  PYTHONUNBUFFERED: "1"
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  SECRET_KEY: "default-secret-key-change-in-production"
+  
+  # Database configuration
+  DB_HOST: "localhost"
+  DB_NAME: "${PROJECT_NAME}-${NORMALIZED_BRANCH}"
+  DB_USER: "${PROJECT_NAME}-${NORMALIZED_BRANCH}"
+  DB_PASSWORD: "default_password"
+  DB_PORT: "5432"
+  
+  # Redis configuration
+  REDIS_URL: "redis://localhost:6379/0"
+  CELERY_BROKER_URL: "redis://localhost:6379/1"
+  
+  # Default site configuration
+  SITE_NAME: "My Application"
+  THEME: "default"
+
+database:
+  type: postgresql
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+
+services:
+  # Main public website - uses default domain (myapp.local)
+  - name: web
+    type: gunicorn
+    command: "gunicorn myapp.wsgi:application"
+    workers: 3
+    port: 8000
+    directory: "src"
+    # No domain specified = uses root domain: myapp.local
+    # No env_vars specified = uses all root env_vars
+
+  # Admin interface - custom domain and settings
+  - name: admin
+    type: gunicorn
+    command: "gunicorn myapp.wsgi:application"
+    workers: 2
+    port: 8001
+    directory: "src"
+    domain: "admin.myapp.local"  # Service-specific domain override
+    env_vars:
+      # Service-specific environment variables (merged with root env_vars)
+      DJANGO_SETTINGS_MODULE: "myapp.settings.admin"  # Override root setting
+      DEBUG: "True"  # Override root setting
+      SITE_NAME: "Admin Portal"  # Override root setting
+      ADMIN_ONLY: "True"  # New variable specific to this service
+      # All other root env_vars (DB_*, REDIS_URL, etc.) are still available
+
+  # API service - different domain and configuration
+  - name: api
+    type: gunicorn
+    command: "gunicorn myapp.api.wsgi:application"
+    workers: 4
+    port: 8002
+    directory: "src"
+    domain: "api.myapp.local"  # Service-specific domain override
+    env_vars:
+      # Service-specific environment variables
+      DJANGO_SETTINGS_MODULE: "myapp.settings.api"  # Override root setting
+      API_VERSION: "v2"  # New variable specific to this service
+      RATE_LIMIT: "1000"  # New variable specific to this service
+      CORS_ALLOWED_ORIGINS: "https://myapp.local,https://admin.myapp.local"
+      # All other root env_vars are inherited
+
+  # Background workers - no domain needed, inherits all root env_vars
+  - name: celery-worker
+    type: celery
+    command: "celery -A myapp worker --concurrency=2 --loglevel=info"
+    workers: 2
+    directory: "src"
+    # No domain (not a web service)
+    # No env_vars override = uses all root env_vars as-is
+
+  # Scheduler - no domain needed, inherits all root env_vars
+  - name: celery-beat
+    type: celery
+    command: "celery -A myapp beat --loglevel=info"
+    workers: 1
+    directory: "src"
+    # No domain (not a web service)
+    # No env_vars override = uses all root env_vars as-is
+
+hooks:
+  pre_deploy:
+    - script: "verify-postgresql-database.sh"
+      description: "Verifying PostgreSQL database and creating if not exists"
+      allow_failure: false
+
+  post_deploy:
+    - script: "validate-django-environment.sh"
+      description: "Validating Django environment and database connection"
+      allow_failure: false
+    
+    - script: "run-django-migrations.sh"
+      description: "Running Django database migrations"
+      allow_failure: false
+    
+    - script: "collect-django-static.sh"
+      description: "Collecting Django static files"
+      allow_failure: true
+
+health_checks:
+  - name: web_health
+    url: "http://myapp.local/"
+    timeout: 30
+    retries: 5
+  
+  - name: admin_health
+    url: "http://admin.myapp.local/admin/"
+    timeout: 30
+    retries: 5
+    
+  - name: api_health
+    url: "http://api.myapp.local/health/"
+    timeout: 30
+    retries: 5
+
+rollback:
+  enabled: true
+  keep_releases: 3

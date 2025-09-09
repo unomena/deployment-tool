@@ -123,10 +123,38 @@ class SupervisorConfigGenerator:
         
         return ','.join(env_pairs)
 
+    def _merge_service_env_vars(self, service: Dict[str, Any]) -> Dict[str, str]:
+        """Merge root env_vars with service-level env_vars, service takes precedence"""
+        # Start with root environment variables
+        merged_env = dict(self.env_vars)
+        
+        # Override with service-specific env_vars if they exist
+        service_env_vars = service.get('env_vars', {})
+        if service_env_vars:
+            merged_env.update(service_env_vars)
+            
+        return merged_env
+
+    def _get_service_domain(self, service: Dict[str, Any]) -> str:
+        """Get domain for service, with service-level override capability"""
+        # Check for service-level domain override first
+        if 'domain' in service:
+            return service['domain']
+        
+        # Fall back to root domain or default
+        return self.env_vars.get('DEFAULT_DOMAIN', f"{self.project_name}-{self.env_vars.get('NORMALIZED_BRANCH', 'main')}")
+
     def _generate_service_config(self, service: Dict[str, Any]) -> str:
         """Generate Supervisor configuration for a single service"""
         service_name = service['name']
         command = service['command']
+        
+        # Get merged environment variables for this service
+        service_env_vars = self._merge_service_env_vars(service)
+        
+        # Get domain for this service
+        service_domain = self._get_service_domain(service)
+        service_env_vars['SERVICE_DOMAIN'] = service_domain
         
         # Build full command with virtual environment
         if not command.startswith('/'):
@@ -146,11 +174,7 @@ class SupervisorConfigGenerator:
             working_dir = self.code_path / service['working_directory']
         
         # Build environment variables
-        environment_string = ""
-        if 'env_vars' in self.config_data:
-            environment_string = self._build_environment_string(
-                self.config_data['env_vars']
-            )
+        environment_string = self._build_environment_string(service_env_vars)
         
         # Handle gunicorn services specially
         if service.get('type') == 'gunicorn':
@@ -169,9 +193,9 @@ class SupervisorConfigGenerator:
             # For non-gunicorn services, use supervisor's process management
             supervisor_numprocs = service.get('workers', 1)
         
-        # Generate configuration with environment isolation
-        environment = self.config_data.get('environment', 'dev')
-        config_content = f"""[program:{self.project_name}-{environment}-{service_name}]
+        # Generate configuration with branch-based naming
+        normalized_branch = os.getenv('NORMALIZED_BRANCH', 'main')
+        config_content = f"""[program:{self.project_name}-{normalized_branch}-{service_name}]
 command={full_command}
 directory={working_dir}
 user={self.user}
@@ -235,8 +259,8 @@ numprocs={supervisor_numprocs}"""
 
     def _write_config_file(self, service_name: str, config_content: str) -> None:
         """Write configuration file for a service"""
-        environment = self.config_data.get('environment', 'dev')
-        config_filename = f"{self.project_name}-{environment}-{service_name}.conf"
+        normalized_branch = os.getenv('NORMALIZED_BRANCH', 'main')
+        config_filename = f"{self.project_name}-{normalized_branch}-{service_name}.conf"
         config_filepath = self.config_output_dir / config_filename
         
         try:
@@ -254,11 +278,11 @@ numprocs={supervisor_numprocs}"""
         if len(services) <= 1:
             return ""  # No group needed for single service
         
-        environment = self.config_data.get('environment', 'dev')
-        service_names = [f"{self.project_name}-{environment}-{service['name']}" for service in services]
+        normalized_branch = os.getenv('NORMALIZED_BRANCH', 'main')
+        service_names = [f"{self.project_name}-{normalized_branch}-{service['name']}" for service in services]
         programs = ','.join(service_names)
         
-        group_config = f"""[group:{self.project_name}-{environment}]
+        group_config = f"""[group:{self.project_name}-{normalized_branch}]
 programs={programs}
 priority=999
 """
@@ -269,8 +293,8 @@ priority=999
         if not group_config:
             return
         
-        environment = self.config_data.get('environment', 'dev')
-        group_filename = f"{self.project_name}-{environment}-group.conf"
+        normalized_branch = os.getenv('NORMALIZED_BRANCH', 'main')
+        group_filename = f"{self.project_name}-{normalized_branch}-group.conf"
         group_filepath = self.config_output_dir / group_filename
         
         try:

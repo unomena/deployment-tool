@@ -148,7 +148,7 @@ Test your installation with a sample deployment:
 
 ```bash
 # Test with a simple project
-make deploy REPO_URL=https://github.com/django/django-project-template.git BRANCH=main ENV=dev
+make deploy REPO_URL=https://github.com/django/django-project-template.git BRANCH=main
 ```
 
 ## Next Steps

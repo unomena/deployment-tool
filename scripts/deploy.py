@@ -30,20 +30,16 @@ class PyDeployer:
         """Initialize deployer with config file and branch"""
         self.config_file = Path(config_file)
         self.branch = branch
+        # Normalize branch name for filesystem compatibility
+        self.normalized_branch = self._normalize_branch_name(branch)
         self.config = self._load_config()
         self.project_name = self.config['name']
-        self.environment = self.config['environment']
-        
-        # Validate environment
-        valid_envs = ['prod', 'qa', 'stage', 'dev']
-        if self.environment not in valid_envs:
-            raise ValueError(f"Environment must be one of: {valid_envs}")
         
         # Set up paths - allow override for testing
         if base_dir:
-            self.base_path = Path(base_dir) / f"{self.project_name}/{self.environment}/{self.branch}"
+            self.base_path = Path(base_dir) / f"{self.project_name}/{self.normalized_branch}"
         else:
-            self.base_path = Path(f"/srv/deployments/{self.project_name}/{self.environment}/{self.branch}")
+            self.base_path = Path(f"/srv/deployments/{self.project_name}/{self.normalized_branch}")
         
         self.code_path = self.base_path / "code"
         self.config_path = self.base_path / "config"
@@ -51,7 +47,8 @@ class PyDeployer:
         self.venv_path = self.base_path / "venv"
         self.scripts_path = Path(__file__).parent
         
-        logger.info(f"Deploying {self.project_name} to {self.environment} environment")
+        logger.info(f"Deploying {self.project_name} branch: {self.branch}")
+        logger.info(f"Normalized branch: {self.normalized_branch}")
         logger.info(f"Base path: {self.base_path}")
 
     def _load_config(self) -> Dict[str, Any]:
@@ -63,13 +60,18 @@ class PyDeployer:
             config = yaml.safe_load(f)
         
         # Validate required fields
-        required_fields = ['name', 'environment', 'python_version']
+        required_fields = ['name', 'python_version']
         missing_fields = [field for field in required_fields if field not in config]
         if missing_fields:
             raise ValueError(f"Missing required fields in config: {missing_fields}")
         
         return config
 
+    def _normalize_branch_name(self, branch: str) -> str:
+        """Convert branch name to filesystem-safe format"""
+        # Replace slashes with hyphens for filesystem compatibility
+        return branch.replace('/', '-')
+    
     def _setup_environment_variables(self) -> Dict[str, str]:
         """Setup environment variables for scripts"""
         env_vars = {
@@ -82,6 +84,7 @@ class PyDeployer:
             'PROJECT_NAME': self.project_name,
             'PYTHON_VERSION': self.config['python_version'],
             'BRANCH': self.branch,
+            'NORMALIZED_BRANCH': self.normalized_branch,
         }
         
         # Add database servers configuration file path if it exists
@@ -145,12 +148,17 @@ class PyDeployer:
                 return re.sub(pattern, replacer, value)
             
             # Expand database config values using env_vars
+            # Use normalized branch name for database naming
             env_vars['DB_TYPE'] = db_config.get('type', 'postgresql')
-            env_vars['DB_NAME'] = expand_vars(db_config.get('name', ''), env_vars)
-            env_vars['DB_USER'] = expand_vars(db_config.get('user', ''), env_vars)
+            env_vars['DB_NAME'] = expand_vars(db_config.get('name', f"{self.project_name}-{self.normalized_branch}"), env_vars)
+            env_vars['DB_USER'] = expand_vars(db_config.get('user', f"{self.project_name}-{self.normalized_branch}"), env_vars)
             env_vars['DB_PASSWORD'] = expand_vars(db_config.get('password', ''), env_vars)
             env_vars['DB_HOST'] = expand_vars(db_config.get('host', 'localhost'), env_vars)
             env_vars['DB_PORT'] = expand_vars(str(db_config.get('port', 5432)), env_vars)
+        
+        # Add domain configuration
+        default_domain = f"{self.project_name}-{self.normalized_branch}"
+        env_vars['DEFAULT_DOMAIN'] = self.config.get('domain', default_domain)
         
         # Add supervisor-specific variables
         env_vars['CONFIG_OUTPUT_DIR'] = str(self.config_path / "supervisor")
@@ -424,7 +432,7 @@ class PyDeployer:
                     "logs": str(self.logs_path),
                     "config": str(self.config_path)
                 },
-                "config_file": f"deploy-{self.environment}.yml"
+                "config_file": f"deploy-{self.normalized_branch}.yml"
             }
             
             # Call the registry management script
@@ -432,7 +440,7 @@ class PyDeployer:
             cmd = [
                 "python3", str(registry_script), "add",
                 "--project", self.project_name,
-                "--environment", self.environment,
+                "--branch", self.normalized_branch,
                 "--data", json.dumps(deployment_data)
             ]
             
@@ -501,7 +509,7 @@ class PyDeployer:
             # Old format: services as dict
             for service_name, service_config in config_services.items():
                 service_data = {
-                    "name": f"{self.project_name}-{self.environment}-{service_name}",
+                    "name": f"{self.project_name}-{self.normalized_branch}-{service_name}",
                     "type": service_config.get("type", service_name),
                     "status": "UNKNOWN",
                     "command": service_config.get("command", "")
@@ -518,7 +526,7 @@ class PyDeployer:
                 if isinstance(service_config, dict):
                     service_name = service_config.get("name", "unknown")
                     service_data = {
-                        "name": f"{self.project_name}-{self.environment}-{service_name}",
+                        "name": f"{self.project_name}-{self.normalized_branch}-{service_name}",
                         "type": service_config.get("type", service_name),
                         "status": "UNKNOWN",
                         "command": service_config.get("command", "")

@@ -9,7 +9,7 @@ This guide covers the fundamental concepts and workflows for deploying Django ap
 PyDeployer organizes deployments using a hierarchical structure:
 
 ```
-/srv/deployments/{project}/{environment}/{branch}/
+/srv/deployments/{project}/{branch}/
 ├── code/           # Cloned repository
 ├── venv/           # Python virtual environment
 ├── config/         # Generated configurations (supervisor, nginx)
@@ -17,30 +17,30 @@ PyDeployer organizes deployments using a hierarchical structure:
 ```
 
 **Example paths:**
-- `/srv/deployments/sample-app/dev/main/code/`
-- `/srv/deployments/sample-app/prod/main/code/`
-- `/srv/deployments/sample-app/branch/feature-auth/code/`
+- `/srv/deployments/sample-app/main/code/`
+- `/srv/deployments/sample-app/dev/code/`
+- `/srv/deployments/sample-app/feature-auth/code/`
 
-### Environment Types
+### Branch-Based Deployments
 
-| Environment | Purpose | Branch | Database Suffix |
-|-------------|---------|--------|-----------------|
-| `dev` | Development | develop/main | `_dev` |
-| `stage` | Staging | main | `_stage` |
-| `qa` | Quality Assurance | main | `_qa` |
-| `prod` | Production | main | `_prod` |
-| `branch` | Feature branches | any | `_branch` |
+| Branch | Purpose | Database Name | Service Name |
+|--------|---------|---------------|-------------|
+| `main` | Production | `project_main` | `project-main-web` |
+| `dev` | Development | `project_dev` | `project-dev-web` |
+| `qa` | Quality Assurance | `project_qa` | `project-qa-web` |
+| `feature/auth` | Feature branch | `project_feature-auth` | `project-feature-auth-web` |
+| `release/v2.1` | Release branch | `project_release-v2.1` | `project-release-v2.1-web` |
 
 ### Configuration Files
 
-Each project requires environment-specific configuration files:
+Each project requires branch-specific configuration files:
 
 ```
 projects/your-project/
+├── deploy-main.yml
 ├── deploy-dev.yml
-├── deploy-stage.yml
 ├── deploy-qa.yml
-└── deploy-prod.yml
+└── deploy-feature-authentication.yml
 ```
 
 ## Basic Deployment Workflow

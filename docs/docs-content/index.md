@@ -7,7 +7,7 @@ Welcome to PyDeployer, a comprehensive Django deployment automation tool designe
 PyDeployer is a deployment automation tool that:
 
 - **Automates Django deployments** with a single command
-- **Manages multiple environments** (dev, staging, production)
+- **Manages branch-based deployments** with automatic isolation
 - **Handles database operations** including migrations and user management
 - **Provides comprehensive monitoring** and logging capabilities
 - **Supports multiple projects** on a single server with isolation
@@ -18,14 +18,14 @@ PyDeployer is a deployment automation tool that:
 ### 🚀 **Simple Deployment**
 Deploy any Django project with a single command:
 ```bash
-make deploy REPO_URL=git@github.com:user/project.git BRANCH=main ENV=prod
+make deploy REPO_URL=git@github.com:user/project.git BRANCH=main
 ```
 
 ### 🔧 **Comprehensive Management**
 - Database setup and migrations
 - Static file collection
 - Supervisor service management
-- Environment isolation
+- Branch-based isolation
 - Dependency management
 
 ### 📊 **Monitoring & Logs**
@@ -37,7 +37,7 @@ make deploy REPO_URL=git@github.com:user/project.git BRANCH=main ENV=prod
 ### 🛡️ **Security & Isolation**
 - Virtual environment isolation
 - Database credential separation
-- Multi-environment support
+- Multi-branch deployment support
 - Secure configuration management
 
 ## Quick Start
@@ -51,19 +51,19 @@ make deploy REPO_URL=git@github.com:user/project.git BRANCH=main ENV=prod
 
 2. **Deploy Your First Project**
    ```bash
-   make deploy REPO_URL=git@github.com:user/sample-app.git BRANCH=main ENV=dev
+   make deploy REPO_URL=git@github.com:user/sample-app.git BRANCH=main
    ```
 
 3. **Manage Your Deployment**
    ```bash
    # Check status
-   make deployment-status PROJECT=sample-app ENV=dev BRANCH=main
+   make deployment-status PROJECT=sample-app BRANCH=main
    
    # View logs
-   make view-logs PROJECT=sample-app ENV=dev BRANCH=main
+   make view-logs PROJECT=sample-app BRANCH=main
    
    # Run migrations
-   make run-migrations PROJECT_DIR=/srv/deployments/sample-app/dev/main/code
+   make run-migrations PROJECT_DIR=/srv/deployments/sample-app/main/code
    ```
 
 ## Architecture Overview

@@ -1,18 +1,19 @@
 # Configuration Guide
 
-PyDeployer uses YAML configuration files to define deployment settings for each project and environment. This guide covers all configuration options and best practices.
+PyDeployer uses YAML configuration files to define deployment settings for each project and branch. This guide covers all configuration options and best practices.
 
 ## Configuration File Structure
 
-Configuration files follow the naming pattern: `deploy-{environment}.yml`
+Configuration files follow the naming pattern: `deploy-{normalized-branch}.yml`
 
 ```
 projects/
 └── your-project/
-    ├── deploy-dev.yml      # Development environment
-    ├── deploy-stage.yml    # Staging environment
-    ├── deploy-prod.yml     # Production environment
-    └── deploy-qa.yml       # QA environment
+    ├── deploy-main.yml                    # Main branch
+    ├── deploy-dev.yml                     # Dev branch
+    ├── deploy-qa.yml                      # QA branch
+    ├── deploy-feature-authentication.yml  # feature/authentication branch
+    └── deploy-release-v2.1.0.yml         # release/v2.1.0 branch
 ```
 
 ## Basic Configuration
@@ -20,20 +21,22 @@ projects/
 ### Minimal Configuration
 
 ```yaml
-# deploy-dev.yml
+# deploy-main.yml
 name: sample-app
 repo: git@github.com:user/sample-app.git
-branch: main
-environment: dev
 
 database:
-  name: sampleapp_dev
-  user: sampleapp_user
-  password: dev_password_123
+  type: postgresql
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
 
 env_vars:
-  DJANGO_SETTINGS_MODULE: sampleapp.settings.dev
-  DEBUG: "True"
+  DJANGO_SETTINGS_MODULE: sampleapp.settings
+  DEBUG: "False"
+  DB_NAME: "${PROJECT_NAME}_${NORMALIZED_BRANCH}"
+  DB_USER: "${PROJECT_NAME}_${NORMALIZED_BRANCH}"
+  DB_PASSWORD: "secure_password_123"
 
 services:
   - name: web

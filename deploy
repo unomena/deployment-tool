@@ -1,17 +1,16 @@
 #!/bin/bash
 # deploy - Simplified Django Deployment Script
 # 
-# Usage: ./deploy <repository_url> <branch_or_sha> <environment>
+# Usage: ./deploy <repository_url> <branch>
 #
 # Parameters:
 #   repository_url  - Git repository URL (https:// or git@)
-#   branch_or_sha   - Branch name or commit SHA to deploy
-#   environment     - Deployment environment (prod, stage, qa, dev, branch)
+#   branch          - Branch name to deploy (slashes converted to hyphens)
 #
 # Examples:
-#   ./deploy https://github.com/myorg/myapp.git main prod
-#   ./deploy git@github.com:myorg/myapp.git feature/new-ui dev
-#   ./deploy https://github.com/myorg/myapp.git v1.2.3 stage
+#   ./deploy https://github.com/myorg/myapp.git main
+#   ./deploy git@github.com:myorg/myapp.git feature/new-ui
+#   ./deploy https://github.com/myorg/myapp.git qa
 
 set -e  # Exit on any error
 
@@ -30,32 +29,29 @@ log_step() {
 # Show usage information
 show_usage() {
     cat << EOF
-Usage: ./deploy <repository_url> <branch_or_sha> <environment>
+Usage: ./deploy <repository_url> <branch>
 
 PARAMETERS:
     repository_url    Git repository URL (https:// or git@)
-    branch_or_sha     Branch name or commit SHA to deploy
-    environment       Deployment environment (prod, stage, qa, dev, branch)
+    branch            Branch name to deploy (uses deploy-{branch}.yml)
 
-ENVIRONMENTS:
-    prod     - Production deployment (uses deploy-prod.yml)
-    stage    - Staging deployment (uses deploy-stage.yml)
-    qa       - QA deployment (uses deploy-qa.yml)
-    dev      - Development deployment (uses deploy-dev.yml)
-    branch   - Branch deployment (uses deploy-branch.yml)
+BRANCH NAMING:
+    - Branch names with slashes are converted to hyphens for filesystem compatibility
+    - Each branch uses its own configuration file: deploy-{branch}.yml
+    - Examples: 'main' → deploy-main.yml, 'feature/auth' → deploy-feature-auth.yml
 
 EXAMPLES:
-    # Deploy main branch to production
-    ./deploy https://github.com/myorg/myapp.git main prod
+    # Deploy main branch
+    ./deploy https://github.com/myorg/myapp.git main
     
-    # Deploy feature branch to development
-    ./deploy git@github.com:myorg/myapp.git feature/new-ui dev
+    # Deploy feature branch (slash converted to hyphen)
+    ./deploy git@github.com:myorg/myapp.git feature/new-ui
     
-    # Deploy specific version to staging
-    ./deploy https://github.com/myorg/myapp.git v1.2.3 stage
+    # Deploy qa branch
+    ./deploy https://github.com/myorg/myapp.git qa
     
-    # Deploy branch for testing
-    ./deploy git@github.com:myorg/myapp.git experimental-feature branch
+    # Deploy development branch
+    ./deploy git@github.com:myorg/myapp.git dev
 
 REQUIREMENTS:
     - Ubuntu LTS server with Python 3.8+
@@ -66,16 +62,22 @@ EOF
 }
 
 # Validate parameters
+# Convert branch name to filesystem-safe format
+convert_branch_name() {
+    local branch="$1"
+    # Replace slashes with hyphens for filesystem compatibility
+    echo "${branch//\//-}"
+}
+
 validate_parameters() {
-    if [[ $# -lt 3 ]]; then
+    if [[ $# -lt 2 ]]; then
         log_error "Missing required parameters"
         show_usage
         exit 1
     fi
     
     REPO_URL="$1"
-    BRANCH_OR_SHA="$2"
-    ENVIRONMENT="$3"
+    BRANCH="$2"
     
     # Validate repository URL format
     if [[ ! "$REPO_URL" =~ ^(https://|git@|git://|file://|/) ]]; then
@@ -83,38 +85,48 @@ validate_parameters() {
         exit 1
     fi
     
-    # Validate environment
-    case "$ENVIRONMENT" in
-        prod|stage|qa|dev|branch)
-            log_info "Environment: $ENVIRONMENT"
-            ;;
-        *)
-            log_error "Invalid environment '$ENVIRONMENT'. Must be one of: prod, stage, qa, dev, branch"
-            exit 1
-            ;;
-    esac
-    
-    # Set config file based on environment
-    CONFIG_FILE="deploy-${ENVIRONMENT}.yml"
+    # Convert branch name for filesystem compatibility
+    NORMALIZED_BRANCH=$(convert_branch_name "$BRANCH")
     
     log_info "Repository: $REPO_URL"
-    log_info "Branch/SHA: $BRANCH_OR_SHA"
-    log_info "Environment: $ENVIRONMENT"
-    log_info "Config file: $CONFIG_FILE"
+    log_info "Branch: $BRANCH"
+    log_info "Normalized branch: $NORMALIZED_BRANCH"
+}
+
+# Resolve configuration file with fallback logic
+resolve_config_file() {
+    local temp_dir="$1"
+    local normalized_branch="$2"
+    
+    # Try branch-specific config first: deploy-{normalized-branch}.yml
+    local branch_config="deploy-${normalized_branch}.yml"
+    if [[ -f "$temp_dir/$branch_config" ]]; then
+        echo "$branch_config"
+        return 0
+    fi
+    
+    # Fall back to default config: deploy.yml
+    local default_config="deploy.yml"
+    if [[ -f "$temp_dir/$default_config" ]]; then
+        echo "$default_config"
+        return 0
+    fi
+    
+    # No valid config found
+    return 1
 }
 
 # Validate configuration file exists and is valid YAML
 validate_config_file() {
     local repo_url="$1"
-    local branch_or_sha="$2"
-    local config_file="$3"
+    local branch="$2"
     local temp_dir="/tmp/config-check-$(date +%s)-$$"
     
-    log_step "Validating configuration file: $config_file" >&2
+    log_step "Resolving and validating configuration file" >&2
     
     # Clone repository to temporary location for config validation
     log_info "Cloning repository for configuration validation..." >&2
-    if ! git clone --depth 1 --branch "$branch_or_sha" "$repo_url" "$temp_dir" >&2 2>/dev/null; then
+    if ! git clone --depth 1 --branch "$branch" "$repo_url" "$temp_dir" >&2 2>/dev/null; then
         # Try cloning without specifying branch, then checkout
         if ! git clone --depth 1 "$repo_url" "$temp_dir" >&2; then
             log_error "Failed to clone repository for configuration validation: $repo_url" >&2
@@ -122,8 +134,8 @@ validate_config_file() {
         fi
         
         cd "$temp_dir"
-        if ! git checkout "$branch_or_sha" >&2 2>/dev/null; then
-            log_error "Failed to checkout '$branch_or_sha' for configuration validation" >&2
+        if ! git checkout "$branch" >&2 2>/dev/null; then
+            log_error "Failed to checkout '$branch' for configuration validation" >&2
             cleanup_temp_dir "$temp_dir"
             exit 1
         fi
@@ -131,19 +143,29 @@ validate_config_file() {
         cd "$temp_dir"
     fi
     
-    # Check if configuration file exists
-    if [[ ! -f "$config_file" ]]; then
-        log_error "❌ Configuration file '$config_file' not found in repository" >&2
+    # Resolve configuration file using fallback logic
+    local config_file
+    if ! config_file=$(resolve_config_file "$temp_dir" "$(convert_branch_name "$branch")"); then
+        log_error "❌ No valid configuration file found in repository" >&2
+        log_error "Looking for:" >&2
+        log_error "  1. deploy-$(convert_branch_name "$branch").yml (branch-specific)" >&2
+        log_error "  2. deploy.yml (default fallback)" >&2
+        log_error "" >&2
         log_error "Available deployment configuration files:" >&2
-        if ls deploy-*.yml >&2 2>/dev/null; then
-            log_error "Please use one of the above files or create '$config_file'" >&2
+        if ls "$temp_dir"/deploy*.yml >&2 2>/dev/null; then
+            log_error "Please create 'deploy.yml' as default or 'deploy-$(convert_branch_name "$branch").yml' for this branch" >&2
         else
             log_error "No deployment configuration files found in repository" >&2
-            log_error "Please create a deployment configuration file (e.g., deploy-dev.yml)" >&2
+            log_error "Please create a deployment configuration file (deploy.yml or deploy-$(convert_branch_name "$branch").yml)" >&2
         fi
         cleanup_temp_dir "$temp_dir"
         exit 1
     fi
+    
+    log_info "✅ Using configuration file: $config_file" >&2
+    
+    # Export the resolved config file for use by the main deployment
+    export RESOLVED_CONFIG_FILE="$config_file"
     
     # Validate YAML syntax
     log_info "Validating YAML syntax..." >&2
@@ -187,13 +209,13 @@ print('✓ Configuration validation passed')
     cleanup_temp_dir "$temp_dir"
 }
 
-# Clone repository and checkout specified branch/SHA
+# Clone repository and checkout specified branch
 clone_and_checkout() {
     local repo_url="$1"
-    local branch_or_sha="$2"
+    local branch="$2"
     local temp_dir="/tmp/deployment-$(date +%s)-$$"
     
-    log_step "Cloning repository and checking out $branch_or_sha" >&2
+    log_step "Cloning repository and checking out $branch" >&2
     
     # Clone repository
     log_info "Cloning repository to $temp_dir" >&2
@@ -210,15 +232,15 @@ clone_and_checkout() {
     git fetch --all --tags >&2
     
     # Try to checkout as branch first, then as commit SHA
-    log_info "Checking out $branch_or_sha" >&2
-    if git checkout "$branch_or_sha" >&2 2>/dev/null; then
-        log_info "Successfully checked out branch: $branch_or_sha" >&2
-    elif git checkout -b "deploy-$branch_or_sha" "$branch_or_sha" >&2 2>/dev/null; then
-        log_info "Successfully checked out commit SHA: $branch_or_sha" >&2
-    elif git checkout "origin/$branch_or_sha" -b "$branch_or_sha" >&2 2>/dev/null; then
-        log_info "Successfully checked out remote branch: origin/$branch_or_sha" >&2
+    log_info "Checking out $branch" >&2
+    if git checkout "$branch" >&2 2>/dev/null; then
+        log_info "Successfully checked out branch: $branch" >&2
+    elif git checkout -b "deploy-$branch" "$branch" >&2 2>/dev/null; then
+        log_info "Successfully checked out commit SHA: $branch" >&2
+    elif git checkout "origin/$branch" -b "$branch" >&2 2>/dev/null; then
+        log_info "Successfully checked out remote branch: origin/$branch" >&2
     else
-        log_error "Failed to checkout '$branch_or_sha'. Branch or commit not found." >&2
+        log_error "Failed to checkout '$branch'. Branch or commit not found." >&2
         cleanup_temp_dir "$temp_dir"
         exit 1
     fi
@@ -253,7 +275,7 @@ main() {
     
     # Create deployment header in log
     {
-        echo "[DEPLOY] $REPO_URL $BRANCH_OR_SHA $ENVIRONMENT"
+        echo "[DEPLOY] $REPO_URL $BRANCH"
         echo "========================================"
         echo ""
     } | tee "$log_file"
@@ -261,7 +283,10 @@ main() {
     log_step "Starting Django deployment automation" | tee -a "$log_file"
     
     # Validate configuration file before proceeding with full deployment
-    validate_config_file "$REPO_URL" "$BRANCH_OR_SHA" "$CONFIG_FILE" 2>&1 | tee -a "$log_file"
+    validate_config_file "$REPO_URL" "$BRANCH" 2>&1 | tee -a "$log_file"
+    
+    # Use the resolved config file from validation
+    CONFIG_FILE="$RESOLVED_CONFIG_FILE"
     
     # Verify deployer script exists
     if [[ ! -f "$deployer_script" ]]; then
@@ -269,20 +294,23 @@ main() {
         exit 1
     fi
     
-    # Clone repository and checkout branch/SHA
+    # Clone repository and checkout branch
     local temp_repo_dir
-    temp_repo_dir=$(clone_and_checkout "$REPO_URL" "$BRANCH_OR_SHA" 2> >(tee -a "$log_file" >&2))
+    temp_repo_dir=$(clone_and_checkout "$REPO_URL" "$BRANCH" 2> >(tee -a "$log_file" >&2))
     
     # Ensure cleanup happens on exit
     trap "cleanup_temp_dir '$temp_repo_dir'" EXIT
     
     # Run the Python deployer with the config from the cloned repository
     log_step "Starting deployment with Python orchestrator" | tee -a "$log_file"
+    
+    # Make config file path absolute since we're changing directories
+    local absolute_config_file="$temp_repo_dir/$CONFIG_FILE"
     cd "$temp_repo_dir"
     
     if python3 "$deployer_script" \
-        --config "$CONFIG_FILE" \
-        --branch "$BRANCH_OR_SHA" \
+        --config "$absolute_config_file" \
+        --branch "$BRANCH" \
         --verbose 2>&1 | tee -a "$log_file"; then
         log_info "🎉 Deployment completed successfully!" | tee -a "$log_file"
         log_info "📋 Full deployment log: $log_file"

@@ -52,8 +52,8 @@ build: $(VENV_DIR) ## Build static documentation
 
 serve: $(VENV_DIR) ## Serve documentation locally with live reload
 	@echo "$(YELLOW)Starting documentation server...$(NC)"
-	@echo "$(GREEN)Documentation will be available at http://127.0.0.1:8000$(NC)"
-	$(MKDOCS_VENV) serve
+	@echo "$(GREEN)Documentation will be available at http://0.0.0.0:8500$(NC)"
+	$(MKDOCS_VENV) serve --dev-addr=0.0.0.0:8500
 
 dev-setup: install ## Complete setup for documentation development
 	@echo "$(GREEN)✓ Documentation development setup complete$(NC)"
