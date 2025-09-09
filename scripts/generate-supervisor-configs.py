@@ -124,7 +124,18 @@ class SupervisorConfigGenerator:
         """Build environment string for Supervisor configuration"""
         env_pairs = []
         
+        # Skip problematic environment variables that are too large or internal
+        skip_vars = {'CONFIG_DATA', 'MAKEOVERRIDES', 'MAKEFLAGS', 'MFLAGS'}
+        
         for key, value in env_vars.items():
+            # Skip internal/large variables
+            if key in skip_vars:
+                continue
+                
+            # Skip variables that are too long (supervisor has limits)
+            if len(str(value)) > 1000:
+                continue
+                
             # Handle variable substitution
             resolved_value = self._substitute_environment_variables(value, env_vars)
             # Quote the value to handle special characters
