@@ -634,8 +634,8 @@ class PyDeployer:
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='PyDeployer - Django deployment automation')
-    parser.add_argument('--config', '-c', required=True, help='Configuration file path')
-    parser.add_argument('--branch', '-b', default='main', help='Branch to deploy (default: main)')
+    parser.add_argument('config', help='Configuration file path')
+    parser.add_argument('branch', nargs='?', default='main', help='Branch to deploy (default: main)')
     parser.add_argument('--base-dir', help='Override base deployment directory (for testing)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     
